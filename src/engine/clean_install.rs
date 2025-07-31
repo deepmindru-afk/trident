@@ -9,11 +9,11 @@ use log::{debug, error, info, warn};
 #[cfg(feature = "grpc-dangerous")]
 use tokio::sync::mpsc;
 
-use osutils::{chroot, container, mount, mountpoint, path::join_relative};
+use osutils::{chroot, container, installation_media, mount, mountpoint, path::join_relative};
 use trident_api::{
     config::{HostConfiguration, Operations},
     constants::{
-        internal_params::{ENABLE_UKI_SUPPORT, NO_TRANSITION},
+        internal_params::{DISABLE_MEDIA_EJECTION, ENABLE_UKI_SUPPORT, NO_TRANSITION},
         ESP_MOUNT_POINT_PATH, ROOT_MOUNT_POINT_PATH, UPDATE_ROOT_PATH,
     },
     error::{
@@ -35,6 +35,31 @@ use crate::{
 use crate::{grpc, GrpcSender};
 
 use super::{NewrootMount, Subsystem};
+
+/// Handles installation media ejection based on boot type and configuration
+fn handle_installation_media_ejection(spec: &HostConfiguration) {
+    if spec.internal_params.get_flag(DISABLE_MEDIA_EJECTION) {
+        info!("Installation media ejection disabled by configuration");
+        return;
+    }
+
+    match installation_media::detect_boot_type() {
+        Ok(installation_media::BootType::RamDisk) => {
+            info!("RAM disk boot detected - proceeding with installation media ejection");
+            installation_media::eject_installation_media_smart();
+        }
+        Ok(installation_media::BootType::LiveCdrom) => {
+            info!("Live CD-ROM boot detected - showing appropriate warning message");
+            installation_media::eject_installation_media_smart(); // This will show the live CD-ROM warning
+        }
+        Ok(installation_media::BootType::PersistentStorage) => {
+            debug!("Persistent storage boot - no installation media ejection needed");
+        }
+        Err(e) => {
+            warn!("Unable to detect boot type: {e:?} - skipping installation media ejection");
+        }
+    }
+}
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn clean_install(
@@ -358,6 +383,9 @@ pub(crate) fn finalize_clean_install(
     }
 
     storage::check_block_devices(state.host_status());
+
+    // Handle installation media ejection based on boot scenario and configuration
+    handle_installation_media_ejection(&state.host_status().spec);
 
     if !state
         .host_status()
