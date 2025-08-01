@@ -10,7 +10,7 @@ use log::{debug, trace};
 use trident_api::{
     config::{HostConfiguration, Partition, VerityDevice},
     constants::ROOT_MOUNT_POINT_PATH,
-    error::TridentError,
+    error::{InternalError, ReportError, TridentError},
     status::{AbVolumeSelection, ServicingType},
     storage_graph::graph::StorageGraph,
     BlockDeviceId,
@@ -290,11 +290,11 @@ impl EngineContext {
         self.storage_graph.block_device_size(device)
     }
 
-    pub(crate) fn is_uki_image(&self) -> Result<bool, TridentError> {
-        if let Some(is_uki) = self.is_uki {
-            return Ok(is_uki);
-        }
-        Err(TridentError::internal(
+    /// Convience method to check if the current context is a UKI context and return a suitable
+    /// error if the flag isn't set.
+    #[track_caller]
+    pub(crate) fn is_uki(&self) -> Result<bool, TridentError> {
+        self.is_uki.structured(InternalError::Internal(
             "is_uki() called without it being set",
         ))
     }

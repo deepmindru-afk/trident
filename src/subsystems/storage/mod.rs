@@ -128,9 +128,6 @@ impl Subsystem for StorageSubsystem {
             }
         }
 
-        // TODO: validate that block devices naming is consistent with the current state
-        // https://dev.azure.com/mariner-org/ECF/_workitems/edit/7322/
-
         encryption::validate_host_config(&ctx.spec).message(format!(
             "Step 'Validate' failed for subunit '{ENCRYPTION_SUBSYSTEM_NAME}'"
         ))?;
@@ -174,12 +171,20 @@ impl Subsystem for StorageSubsystem {
             verity::create_machine_id(mount_path).structured(ServicingError::CreateMachineId)?;
         }
 
+        // Run encryption provisioning if encryption configuration is present
+        if ctx.spec.storage.encryption.is_some() {
+            debug!("Starting step 'Provision' for subunit '{ENCRYPTION_SUBSYSTEM_NAME}'");
+            encryption::provision(ctx, mount_path).message(format!(
+                "Step 'Provision' failed for subunit '{ENCRYPTION_SUBSYSTEM_NAME}'"
+            ))?;
+        }
+
         Ok(())
     }
 
     #[tracing::instrument(name = "storage_configuration", skip_all)]
     fn configure(&mut self, ctx: &EngineContext) -> Result<(), TridentError> {
-        if ctx.is_uki_image()? && ctx.storage_graph.root_fs_is_verity() {
+        if ctx.is_uki()? && ctx.storage_graph.root_fs_is_verity() {
             debug!("Skipping storage configuration because UKI root verity is in use");
             return Ok(());
         }
@@ -218,9 +223,10 @@ mod tests {
     use url::Url;
 
     use osutils::encryption;
+    use sysdefs::tpm2::Pcr;
     use trident_api::{
         config::{
-            Disk as DiskConfig, FileSystem, HostConfiguration, MountPoint,
+            AbUpdate, Disk as DiskConfig, Encryption, FileSystem, HostConfiguration, MountPoint,
             Partition as PartitionConfig, PartitionSize, PartitionType, Raid, RaidLevel,
             SoftwareRaidArray, Storage as StorageConfig,
         },
@@ -311,20 +317,21 @@ mod tests {
                     source: Default::default(),
                     mount_point: Some(MountPoint::from_str("/").unwrap()),
                 }],
-                ab_update: Some(trident_api::config::AbUpdate {
+                ab_update: Some(AbUpdate {
                     volume_pairs: vec![trident_api::config::AbVolumePair {
                         id: "ab1".to_owned(),
                         volume_a_id: "part1".to_owned(),
                         volume_b_id: "part2".to_owned(),
                     }],
                 }),
-                encryption: Some(trident_api::config::Encryption {
+                encryption: Some(Encryption {
                     recovery_key_url: Some(Url::from_file_path(recovery_key_file).unwrap()),
                     volumes: vec![trident_api::config::EncryptedVolume {
                         id: "enc1".to_owned(),
                         device_name: "luks-enc".to_owned(),
                         device_id: "part5".to_owned(),
                     }],
+                    pcrs: vec![Pcr::Pcr7],
                 }),
                 ..Default::default()
             },

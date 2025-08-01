@@ -167,6 +167,8 @@ stages:
             parameters:
               tridentConfigPath: $(TRIDENT_CONFIG_PATH)
               runtimeEnv: ${{ parameters.runtimeEnv }}
+              config: $(TRIDENT_CONFIGURATION_NAME)
+              baremetal: true
 
           # Download all test images
           - template: ../testing_common/download-test-images.yml
@@ -214,7 +216,22 @@ stages:
               EOF
 
               cat $(TRIDENT_SOURCE_DIR)/baremetal-netlaunch.yaml | grep -v password
-            displayName: "Write Netlaunch configuration"
+
+              cat << EOF > $(TRIDENT_SOURCE_DIR)/baremetal-netlisten.yaml
+              netlisten:
+                bmc:
+                  ip: "${{ variables.BAREMETAL_BMC_IP }}"
+                  username: "$(baremetal_controller.bmc_username)"
+                  password: "$(baremetal_controller.bmc_password)"
+                  serialOverSsh:
+                    sshPort: 22
+                    comPort: com2
+                    output:  "baremetal-serial.log"
+              EOF
+
+              cat $(TRIDENT_SOURCE_DIR)/baremetal-netlisten.yaml | grep -v password
+
+            displayName: "Write Netlaunch and netlisten configuration"
 
           - bash: |
               set -euxo pipefail
@@ -276,6 +293,18 @@ stages:
 
           - bash: |
               set -eux
+              ./bin/storm-trident helper check-selinux \
+                  "$(Build.SourcesDirectory)/e2e_tests/helpers/key" \
+                  "${{ variables.BAREMETAL_OAM_IP }}" \
+                  "testing-user" \
+                  "${{ parameters.runtimeEnv }}" \
+                  --audit-file $(ob_outputDirectory)/audit.log \
+            timeoutInMinutes: 5
+            condition: eq('${{ parameters.runtimeEnv }}', 'host')
+            displayName: "📄 Check for SELinux failures"
+
+          - bash: |
+              set -eux
               ./bin/storm-trident helper boot-metrics \
                   "$(Build.SourcesDirectory)/e2e_tests/helpers/key" \
                   "${{ variables.BAREMETAL_OAM_IP }}" \
@@ -307,3 +336,4 @@ stages:
               tridentConfigPath: $(TRIDENT_CONFIG_PATH)
               netlistenPort: ${{ variables.NETLAUNCH_PORT }}
               runtimeEnv: ${{ parameters.runtimeEnv }}
+              netlistenConfigFile: $(TRIDENT_SOURCE_DIR)/baremetal-netlisten.yaml

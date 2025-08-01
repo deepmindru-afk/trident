@@ -1,18 +1,24 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Error};
+use enumflags2::BitFlags;
 use log::{debug, info, trace, warn};
 
-use osutils::{block_devices, efivar, lsblk, veritysetup};
+use osutils::{block_devices, efivar, lsblk, pcrlock, veritysetup, virt};
+
 use trident_api::{
-    constants::internal_params::VIRTDEPLOY_BOOT_ORDER_WORKAROUND,
+    constants::internal_params::{OVERRIDE_PCRLOCK_ENCRYPTION, VIRTDEPLOY_BOOT_ORDER_WORKAROUND},
     error::{InternalError, ReportError, ServicingError, TridentError, TridentResultExt},
     status::{AbVolumeSelection, ServicingState, ServicingType},
     BlockDeviceId,
 };
 
 use crate::{
-    engine::{self, bootentries, context::EngineContext, storage::verity},
+    engine::{
+        self, bootentries,
+        context::EngineContext,
+        storage::{encryption, verity},
+    },
     DataStore,
 };
 
@@ -37,7 +43,7 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<(), TridentError> {
         image: None, // Not used for boot validation logic
         storage_graph: engine::build_storage_graph(&datastore.host_status().spec.storage)?, // Build storage graph
         filesystems: Vec::new(), // Left empty since context does not have image
-        is_uki: None,
+        is_uki: Some(efivar::current_var_is_uki()),
     };
 
     // Get the block device path of the current root
@@ -55,7 +61,7 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<(), TridentError> {
 
         // If it's virtdeploy, after confirming that we have booted into the correct image, we need
         // to update the `BootOrder` to boot from the correct image next time.
-        let use_virtdeploy_workaround = osutils::virt::is_virtdeploy()
+        let use_virtdeploy_workaround = virt::is_virtdeploy()
             || ctx
                 .spec
                 .internal_params
@@ -69,11 +75,45 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<(), TridentError> {
                 .message("Failed to persist boot order after reboot")?;
         }
 
-        // If the bootloader set the LoaderEntrySelected variable, then make its value the default
-        // boot entry. Systemd-boot sets this variable, but GRUB does not.
-        if efivar::current_var_set() {
+        // In UKI mode, set systemd-boot's default boot option to the currently running one.
+        if ctx.is_uki()? {
             efivar::set_default_to_current()
                 .message("Failed to set default boot entry to current")?;
+        }
+
+        // If this is a UKI image, then we need to re-generate pcrlock policy to include the PCRs
+        // selected by the user for the current boot only.
+        //
+        // TODO: Remove this internal override once container, BM, and "rerun" E2E
+        // encryption tests are fixed. Related ADO tasks:
+        // https://dev.azure.com/mariner-org/polar/_workitems/edit/13344/ and
+        // https://dev.azure.com/mariner-org/polar/_workitems/edit/14269/.
+        let override_pcrlock_encryption = ctx
+            .spec
+            .internal_params
+            .get_flag(OVERRIDE_PCRLOCK_ENCRYPTION);
+        if let Some(ref encryption) = ctx.spec.storage.encryption {
+            if ctx.is_uki()? && !override_pcrlock_encryption {
+                debug!("Regenerating pcrlock policy for current boot");
+
+                let mut pcrs = BitFlags::empty();
+                for pcr in &encryption.pcrs {
+                    pcrs |= BitFlags::from(*pcr);
+                }
+
+                // Get UKI and bootloader binaries for .pcrlock file generation
+                let (uki_binaries, bootloader_binaries) =
+                    encryption::get_binary_paths_pcrlock(&ctx, pcrs, None)
+                        .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
+
+                // Generate a pcrlock policy
+                pcrlock::generate_pcrlock_policy(pcrs, uki_binaries, bootloader_binaries)?;
+            } else {
+                warn!(
+                    "Skipping pcrlock policy re-generation on boot validation \
+                    because '{OVERRIDE_PCRLOCK_ENCRYPTION}' is set"
+                );
+            }
         }
     } else if datastore.host_status().servicing_state == ServicingState::CleanInstallStaged
         || datastore.host_status().servicing_state == ServicingState::CleanInstallFinalized

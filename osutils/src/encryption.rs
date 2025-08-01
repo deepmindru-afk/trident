@@ -2,15 +2,18 @@ use std::{
     fs::{self, File},
     io::Read,
     path::Path,
+    sync::Mutex,
 };
 
 use anyhow::{Context, Error};
 use enumflags2::BitFlags;
+use log::debug;
+use once_cell::sync::Lazy;
 
 use sysdefs::tpm2::Pcr;
 use trident_api::constants::LUKS_HEADER_SIZE_IN_MIB;
 
-use crate::dependencies::Dependency;
+use crate::{dependencies::Dependency, pcrlock::PCRLOCK_POLICY_JSON_PATH};
 
 /// Cipher specification string for the LUKS2 data segment.
 pub const CIPHER: &str = "aes-xts-plain64";
@@ -25,27 +28,79 @@ pub const KEY_SIZE: &str = "512";
 /// Size of the temporary recovery key file in bytes.
 const TMP_RECOVERY_KEY_SIZE: usize = 64;
 
+/// Randomly generated key passphrase used for encryption and protected by a mutex. This passphrase
+/// is used to re-enroll the TPM 2.0 device using a pcrlock policy.
+///
+/// TODO: In systemd v256, `--unlock-tpm2-device` is added, which allows to use a TPM 2.0 device,
+/// instead of a key file, to unlock the volume. Once systemd v256 is available in AZL 4.0, remove
+/// ENCRYPTION_PASSPHRASE and use `--unlock-tpm2-device` instead. Related ADO task:
+/// https://dev.azure.com/mariner-org/polar/_workitems/edit/13057/.
+pub static ENCRYPTION_PASSPHRASE: Lazy<Mutex<Vec<u8>>> = Lazy::new(Default::default);
+
 /// Runs `systemd-cryptenroll` to enroll a TPM 2.0 device for the given device of a LUKS2 encrypted
 /// volume.
 ///
-/// Takes in the key file to unlock the TPM 2.0 device, the path to the device, and a set of PCRs
-/// to bind the enrollment to. By default, the enrollment is binded to PCR 7 only.
+/// Takes in the key file to unlock the TPM 2.0 device and device path. Optionally, also takes in
+/// a set of PCRs to seal to, when sealing to a pcrlock policy is not possible.
 pub fn systemd_cryptenroll(
     key_file: impl AsRef<Path>,
     device_path: impl AsRef<Path>,
-    pcrs: BitFlags<Pcr>,
+    pcrs: Option<BitFlags<Pcr>>,
+) -> Result<(), Error> {
+    debug!(
+        "Enrolling TPM 2.0 device for underlying encrypted volume '{}'",
+        device_path.as_ref().display()
+    );
+
+    let mut cmd = Dependency::SystemdCryptenroll.cmd();
+    cmd.arg(device_path.as_ref().as_os_str())
+        .arg("--tpm2-device=auto")
+        .arg("--wipe-slot=tpm2")
+        .arg(format!("--unlock-key-file={}", key_file.as_ref().display()));
+
+    // If PCRs are provided, seal against the values of these PCRs directly; otherwise, seal
+    // against a pcrlock policy.
+    if let Some(pcrs) = pcrs {
+        cmd.arg(to_tpm2_pcrs_arg(pcrs));
+    } else {
+        cmd.arg(format!("--tpm2-pcrlock={PCRLOCK_POLICY_JSON_PATH}"));
+    }
+
+    cmd.run_and_check().context(format!(
+        "Failed to enroll TPM 2.0 device for underlying device '{}'",
+        device_path.as_ref().display()
+    ))
+}
+
+#[derive(Debug, Clone)]
+pub enum KeySlotType {
+    Password,
+    Index(u8),
+}
+
+impl std::fmt::Display for KeySlotType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KeySlotType::Password => write!(f, "password"),
+            KeySlotType::Index(idx) => write!(f, "{idx}"),
+        }
+    }
+}
+
+/// Runs `systemd-cryptenroll <encrypted_device_path> --wipe-slot={}` to wipe the desired key slot
+/// for the given encrypted device.
+pub fn systemd_cryptenroll_wipe_slot(
+    device_path: impl AsRef<Path>,
+    key_slot: KeySlotType,
 ) -> Result<(), Error> {
     Dependency::SystemdCryptenroll
         .cmd()
-        .arg("--tpm2-device=auto")
-        .arg(to_tpm2_pcrs_arg(pcrs))
-        .arg("--unlock-key-file")
-        .arg(key_file.as_ref().as_os_str())
-        .arg("--wipe-slot=tpm2")
         .arg(device_path.as_ref().as_os_str())
+        .arg(format!("--wipe-slot={key_slot}"))
         .run_and_check()
         .context(format!(
-            "Failed to enroll TPM 2.0 device for underlying device '{}'",
+            "Failed to wipe key slot '{}' for underlying device '{}'",
+            key_slot,
             device_path.as_ref().display()
         ))
 }
@@ -164,6 +219,7 @@ pub fn cryptsetup_close(device_name: &str) -> Result<(), Error> {
 
 /// Converts the provided PCR bitflags into the `--tpm2-pcrs` argument for `systemd-cryptenroll`.
 /// Returns a string with the PCR indices separated by `+`.
+#[allow(dead_code)]
 fn to_tpm2_pcrs_arg(pcrs: BitFlags<Pcr>) -> String {
     format!(
         "--tpm2-pcrs={}",
@@ -176,7 +232,8 @@ fn to_tpm2_pcrs_arg(pcrs: BitFlags<Pcr>) -> String {
 
 /// This function creates a file at the specified path and fills it with cryptographically secure
 /// random bytes sourced from `/dev/random`. It is intended for generating a recovery key file with
-/// a specified size `TMP_RECOVERY_KEY_SIZE`.
+/// a specified size `TMP_RECOVERY_KEY_SIZE`. The function returns the random bytes that were
+/// written to the file.
 ///
 /// `path` specifies the location and name of the file to be created, and must be accessible and
 /// writable by the process.
@@ -184,17 +241,21 @@ fn to_tpm2_pcrs_arg(pcrs: BitFlags<Pcr>) -> String {
 /// This function can return an error if opening or reading `/dev/random` fails. It can also error
 /// when writing to the specified file path fails, which could be due to permission issues,
 /// non-existent directories in the path, or other filesystem-related errors.
-pub fn generate_recovery_key_file(path: &Path) -> Result<(), Error> {
+pub fn generate_recovery_key_file(path: &Path) -> Result<Vec<u8>, Error> {
     let mut random_file =
         File::open(DEV_RANDOM_PATH).context("Failed to open '{DEV_RANDOM_PATH}'")?;
-    let mut random_buffer: [u8; TMP_RECOVERY_KEY_SIZE] = [0u8; TMP_RECOVERY_KEY_SIZE];
+
+    let mut random_buffer = vec![0u8; TMP_RECOVERY_KEY_SIZE];
     random_file
         .read_exact(&mut random_buffer)
         .context("Failed to read from '{DEV_RANDOM_PATH}'")?;
-    fs::write(path, random_buffer).context(format!(
+
+    fs::write(path, &random_buffer).context(format!(
         "Failed to write random data to recovery key file '{}'",
         path.display()
-    ))
+    ))?;
+
+    Ok(random_buffer)
 }
 
 #[cfg(test)]
@@ -217,7 +278,7 @@ mod tests {
         let all_pcrs = BitFlags::<Pcr>::all();
         assert_eq!(
             to_tpm2_pcrs_arg(all_pcrs),
-            "--tpm2-pcrs=0+1+2+3+4+5+7+9+10+11+12+13+14+15+16+23".to_string()
+            "--tpm2-pcrs=0+1+2+3+4+5+6+7+8+9+10+11+12+13+14+15+16+17+18+19+20+21+22+23".to_string()
         );
     }
 
@@ -296,6 +357,7 @@ mod functional_test {
     use crate::{
         filesystems::MkfsFileSystemType,
         mkfs,
+        pcrlock::{self, PCRLOCK_DIR},
         repart::{RepartEmptyMode, RepartPartitionEntry, SystemdRepartInvoker},
         testutils::repart::{self, TEST_DISK_DEVICE_PATH},
         udevadm,
@@ -311,6 +373,30 @@ mod functional_test {
         if !Path::new("/mnt").exists() {
             Dependency::Mkdir.cmd().arg("/mnt").run_and_check().unwrap();
         }
+    }
+
+    /// Copies the static .pcrlock files related to PCR 0 to the expected location inside
+    /// PCRLOCK_DIR, so that the pcrlock policy can be generated.
+    fn copy_static_pcrlock_files() {
+        fs::create_dir_all(format!("{PCRLOCK_DIR}/500-separator.pcrlock.d")).unwrap();
+
+        let pcrlock_330 = include_str!(
+            "../../packaging/static-pcrlock-files/500-separator.pcrlock.d/300-0x00000000.pcrlock"
+        );
+        let pcrlock_600 = include_str!(
+            "../../packaging/static-pcrlock-files/500-separator.pcrlock.d/600-0xffffffff.pcrlock"
+        );
+        // Write the .pcrlock files to the expected location
+        fs::write(
+            format!("{PCRLOCK_DIR}/500-separator.pcrlock.d/300-0x00000000.pcrlock"),
+            pcrlock_330,
+        )
+        .unwrap();
+        fs::write(
+            format!("{PCRLOCK_DIR}/500-separator.pcrlock.d/600-0xffffffff.pcrlock"),
+            pcrlock_600,
+        )
+        .unwrap();
     }
 
     #[functional_test(feature = "helpers")]
@@ -342,8 +428,14 @@ mod functional_test {
         // Run `cryptsetup-luksFormat` on the partition
         cryptsetup_luksformat(key_file_path, &partition1.node).unwrap();
 
+        // Copy the static .pcrlock files related to PCR 0 to the expected location
+        copy_static_pcrlock_files();
+        // Generate a pcrlock policy that only includes PCR 0
+        let pcrs = BitFlags::from(Pcr::Pcr0);
+        pcrlock::generate_pcrlock_policy(pcrs, vec![], vec![]).unwrap();
+
         // Run `systemd-cryptenroll` on the partition
-        systemd_cryptenroll(key_file_path, &partition1.node, BitFlags::from(Pcr::Pcr7)).unwrap();
+        systemd_cryptenroll(key_file_path, &partition1.node, None).unwrap();
 
         // Open the encrypted volume, to make the block device available
         cryptsetup_open(key_file_path, &partition1.node, ENCRYPTED_VOLUME_NAME).unwrap();
@@ -471,18 +563,24 @@ mod functional_test {
 
         // Create a temporary file to store the recovery key file
         let key_file_tmp = NamedTempFile::new().unwrap();
-        let key_file_path = key_file_tmp.path().to_owned();
-        fs::set_permissions(&key_file_path, Permissions::from_mode(0o600)).unwrap();
-        generate_recovery_key_file(&key_file_path).unwrap();
+        let key_file_path = key_file_tmp.path();
+        fs::set_permissions(key_file_path, Permissions::from_mode(0o600)).unwrap();
+        generate_recovery_key_file(key_file_path).unwrap();
 
         // Re-encrypt the filesystem
-        cryptsetup_reencrypt(&key_file_path, &partition1.node).unwrap();
+        cryptsetup_reencrypt(key_file_path, &partition1.node).unwrap();
+
+        // Copy the static .pcrlock files related to PCR 0 to the expected location
+        copy_static_pcrlock_files();
+        // Generate a pcrlock policy that only includes PCR 0
+        let pcrs = BitFlags::from(Pcr::Pcr0);
+        pcrlock::generate_pcrlock_policy(pcrs, vec![], vec![]).unwrap();
 
         // Run `systemd-cryptenroll` on the partition
-        systemd_cryptenroll(&key_file_path, &partition1.node, BitFlags::from(Pcr::Pcr7)).unwrap();
+        systemd_cryptenroll(key_file_path, &partition1.node, None).unwrap();
 
         // Open the encrypted volume, to make the block device available
-        cryptsetup_open(&key_file_path, &partition1.node, ENCRYPTED_VOLUME_NAME).unwrap();
+        cryptsetup_open(key_file_path, &partition1.node, ENCRYPTED_VOLUME_NAME).unwrap();
 
         // Verify the test data exists at the expected offset
         let mut decrypted_device = OpenOptions::new()

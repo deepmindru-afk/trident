@@ -14,7 +14,7 @@ const (
 	TRIDENT_CONTAINER = "docker run --pull=never --rm --privileged " +
 		"-v /etc/trident:/etc/trident -v /var/lib/trident:/var/lib/trident " +
 		"-v /:/host -v /dev:/dev -v /run:/run -v /sys:/sys -v /var/log:/var/log " +
-		"--pid host --ipc host trident/trident:latest"
+		"-v /etc/pki:/etc/pki:ro --pid host --ipc host trident/trident:latest"
 	DOCKER_IMAGE_PATH = "/var/lib/trident/trident-container.tar.gz"
 )
 
@@ -126,6 +126,7 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
 	defer session.Close()
 
 	cmd := fmt.Sprintf("sudo systemctl status %s --no-pager", serviceName)
+	logrus.Debugf("Running command: %s", cmd)
 
 	output, err := session.CombinedOutput(cmd)
 	if err != nil {
@@ -134,6 +135,7 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
 		// error!
 		if exitErr, ok := err.(*ssh.ExitError); !(ok && exitErr.ExitStatus() == 3) {
 			// This is an unknown error, return it.
+			logrus.Debugf("Received output:\n %s", output)
 			return fmt.Errorf("failed to check Trident service status: %w", err)
 		}
 	}

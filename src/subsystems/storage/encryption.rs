@@ -1,17 +1,31 @@
-use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
+use std::{
+    fs,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 
-use log::{info, trace};
+use enumflags2::BitFlags;
+use log::{debug, info, trace};
 
-use osutils::{encryption, files};
+use osutils::{
+    encryption, files,
+    path::join_relative,
+    pcrlock::{self, PCRLOCK_POLICY_JSON_PATH},
+};
+
 use trident_api::{
     config::{
         HostConfiguration, HostConfigurationDynamicValidationError,
         HostConfigurationStaticValidationError, PartitionType,
     },
-    error::{InvalidInputError, ReportError, ServicingError, TridentError},
+    constants::internal_params::OVERRIDE_PCRLOCK_ENCRYPTION,
+    error::{InternalError, InvalidInputError, ReportError, ServicingError, TridentError},
 };
 
-use crate::engine::EngineContext;
+use crate::{
+    engine::{storage::encryption as storage_encryption, EngineContext},
+    ServicingType,
+};
 
 const CRYPTTAB_PATH: &str = "/etc/crypttab";
 
@@ -72,6 +86,95 @@ pub(super) fn validate_host_config(host_config: &HostConfiguration) -> Result<()
                     },
                 )));
             }
+        }
+    }
+
+    Ok(())
+}
+
+/// Provisions encrypted volumes by re-generating the pcrlock policy, when necessary. Also,
+/// persists the pcrlock policy to the update volume.
+///
+/// On clean install:
+/// 1. TODO: UKI MOS + UKI ROS -> re-generate pcrlock policy to include PCRs 4,7,11 as selected by
+///    the user; not implemented for now. Related ADO task:
+///    https://dev.azure.com/mariner-org/polar/_workitems/edit/13059/.
+/// 2. Grub MOS + UKI ROS -> N/A, i.e. keep previous pcrlock policy that includes PCR 0 only,
+/// 3. Grub MOS + grub ROS -> N/A, i.e. still sealed to the value of PCR 7.
+///
+/// On A/B update:
+/// 1. UKI ROS -> re-generate pcrlock policy to include PCRs 4,7,11 as selected by the user,
+/// 2. Grub ROS -> N/A, i.e. keep previous pcrlock policy that includes PCR 7 only.
+#[tracing::instrument(name = "encryption_provision", skip_all)]
+pub fn provision(ctx: &EngineContext, mount_path: &Path) -> Result<(), TridentError> {
+    if let Some(encryption) = &ctx.spec.storage.encryption {
+        debug!("Initializing encryption provisioning");
+
+        // Determine if pcrlock policy should be re-generated to include updated PCRs
+        let updated_pcrs = match ctx.servicing_type {
+            ServicingType::CleanInstall => None,
+            // On A/B update, use PCRs selected by the user through the API!
+            ServicingType::AbUpdate => {
+                if ctx.is_uki()? {
+                    // TODO: Remove this internal override once container, BM, and "rerun" E2E
+                    // encryption tests are fixed. Related ADO tasks:
+                    // https://dev.azure.com/mariner-org/polar/_workitems/edit/13344/ and
+                    // https://dev.azure.com/mariner-org/polar/_workitems/edit/14269/.
+                    let override_pcrlock_encryption = ctx
+                        .spec
+                        .internal_params
+                        .get_flag(OVERRIDE_PCRLOCK_ENCRYPTION);
+                    if !override_pcrlock_encryption {
+                        let mut bitflags = BitFlags::empty();
+                        for pcr in &encryption.pcrs {
+                            bitflags |= BitFlags::from(*pcr);
+                        }
+                        Some(bitflags)
+                    } else {
+                        debug!(
+                            "Runtime OS image is a UKI image, \
+                            but internal override '{OVERRIDE_PCRLOCK_ENCRYPTION}' is set to true, \
+                            so skipping re-generating pcrlock policy",
+                        );
+                        None
+                    }
+                } else {
+                    debug!("Runtime OS image is a grub image, so skipping re-generating pcrlock policy");
+                    None
+                }
+            }
+            _ => {
+                return Err(TridentError::new(InternalError::UnexpectedServicingType {
+                    servicing_type: ctx.servicing_type,
+                }));
+            }
+        };
+
+        // If updated PCRs are specified, re-generate pcrlock policy
+        if let Some(pcrs) = updated_pcrs {
+            debug!("Re-generating pcrlock policy to include PCRs: {:?}", pcrs);
+            // Get UKI and bootloader binaries for .pcrlock file generation
+            let (uki_binaries, bootloader_binaries) =
+                storage_encryption::get_binary_paths_pcrlock(ctx, pcrs, Some(mount_path))
+                    .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
+
+            // Re-generate pcrlock policy
+            pcrlock::generate_pcrlock_policy(pcrs, uki_binaries, bootloader_binaries)?;
+        }
+
+        // If a pcrlock policy JSON file exists, copy it to the update volume
+        if Path::new(PCRLOCK_POLICY_JSON_PATH).exists() {
+            let pcrlock_json_copy = join_relative(mount_path, PCRLOCK_POLICY_JSON_PATH);
+            debug!(
+                "Copying pcrlock policy JSON to update volume at path '{}'",
+                pcrlock_json_copy.display()
+            );
+            fs::copy(PCRLOCK_POLICY_JSON_PATH, pcrlock_json_copy.clone()).structured(
+                ServicingError::CopyPcrlockPolicyJson {
+                    path: PCRLOCK_POLICY_JSON_PATH.to_string(),
+                    destination: pcrlock_json_copy.display().to_string(),
+                },
+            )?;
         }
     }
 
@@ -161,6 +264,8 @@ mod tests {
 
     use url::Url;
 
+    use sysdefs::tpm2::Pcr;
+
     use trident_api::{
         config::{
             Disk, EncryptedVolume, Encryption, Partition, PartitionSize, PartitionType, Storage,
@@ -202,6 +307,7 @@ mod tests {
                     device_name: "luks-srv".to_owned(),
                     device_id: "srv-enc".to_owned(),
                 }],
+                pcrs: vec![Pcr::Pcr7],
             }),
             ..Default::default()
         }

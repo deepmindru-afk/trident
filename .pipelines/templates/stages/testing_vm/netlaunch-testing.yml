@@ -112,6 +112,13 @@ stages:
               downloadTridentContainer: ${{ variables.downloadTridentContainer }}
               tridentTestImageUsrVerity: ${{ variables.usrVerityTestImageName }}
 
+          # Push (regular or container) testimage to ACR
+          - template: ../common_tasks/push-to-acr.yml
+            parameters:
+              imageName: ${{ variables.testImageName }}
+              registry: maritimuspublic
+              config: ${{ variables.tridentConfigurationName }}
+
           - template: netlaunch-prep.yml
 
           - template: ../testing_common/trident-prep.yml
@@ -119,6 +126,9 @@ stages:
               tridentSourceDirectory: $(tridentSourceDirectory)
               tridentConfigPath: $(tridentConfigPath)
               runtimeEnv: ${{ parameters.runtimeEnv }}
+              config: ${{ variables.tridentConfigurationName }}
+              imageName: ${{ variables.testImageName }}
+              baremetal: false
 
           - bash: |
               set -eux
@@ -196,6 +206,20 @@ stages:
 
           - bash: |
               set -eux
+
+              HOST_IP=$(jq -r '.virtualmachines[0].ip' $(argusToolkitSourceDirectory)/virt-deploy-metadata.json)
+              ./bin/storm-trident helper check-selinux \
+                  "$(tridentSourceDirectory)/e2e_tests/helpers/key" \
+                  "$HOST_IP" \
+                  "testing-user" \
+                  "${{ parameters.runtimeEnv }}" \
+                  --audit-file $(ob_outputDirectory)/audit.log \
+            timeoutInMinutes: 5
+            condition: eq('${{ parameters.runtimeEnv }}', 'host')
+            displayName: "📄 Check for SELinux failures"
+
+          - bash: |
+              set -eux
               HOST_IP=$(jq -r '.virtualmachines[0].ip' $(argusToolkitSourceDirectory)/virt-deploy-metadata.json)
               ssh -o StrictHostKeyChecking=no -i $(tridentSourceDirectory)/e2e_tests/helpers/key testing-user@$HOST_IP \
                 'sudo journalctl -u docker.service'
@@ -241,6 +265,12 @@ stages:
               userName: testing-user
               artifactsDirectory: artifacts/test-image
               netlistenPort: ${{variables.netlaunchPort}}
+
+          - template: ../common_tasks/remove-from-acr.yml
+            parameters:
+              repository: ${{ variables.testImageName }}
+              registry: "maritimuspublic"
+              config: ${{ variables.tridentConfigurationName }}
 
           - bash: |
               set -eux

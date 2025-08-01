@@ -64,10 +64,10 @@ pub(crate) fn update(
         ab_active_volume: state.host_status().ab_active_volume,
         disk_uuids: state.host_status().disk_uuids.clone(),
         install_index: state.host_status().install_index,
+        is_uki: Some(image.is_uki() || host_config.internal_params.get_flag(ENABLE_UKI_SUPPORT)),
         image: Some(image),
         storage_graph: engine::build_storage_graph(&host_config.storage)?, // Build storage graph
         filesystems: Vec::new(), // Will be populated after dynamic validation
-        is_uki: Some(host_config.internal_params.get_flag(ENABLE_UKI_SUPPORT)),
     };
 
     // Before starting an update servicing, need to validate that the active volume is set
@@ -89,7 +89,7 @@ pub(crate) fn update(
         .into_iter()
         .flatten()
         .max()
-        .unwrap_or(ServicingType::NoActiveServicing); // Never None b/c select_servicing_type() returns a value
+        .unwrap_or(ServicingType::NoActiveServicing);
     if servicing_type == ServicingType::NoActiveServicing {
         info!("No update servicing required");
         return Ok(ExitKind::Done);
