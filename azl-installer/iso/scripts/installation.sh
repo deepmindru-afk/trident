@@ -2,13 +2,13 @@
 set -ex
 trap '/bin/bash' ERR
 
-CD_INSTALLER_DIR="/mnt/trident_cdrom/installer"
-IMAGES_PATH="/mnt/trident_cdrom/images/"
+# CD_INSTALLER_DIR="/mnt/trident_cdrom/installer"
+# IMAGES_PATH="/mnt/trident_cdrom/images/"
 WORKING_DIR="/root/installer"
 
 # Copy the installer files to the working directory
-cp -r "$CD_INSTALLER_DIR/" "/root/"
-cp -r "$IMAGES_PATH" "$WORKING_DIR/"
+# cp -r "$CD_INSTALLER_DIR/" "/root/"
+# cp -r "$IMAGES_PATH" "$WORKING_DIR/"
 
 TRIDENT_CONFIG="/etc/trident/config.yaml"
 TRIDENT_IMAGE_PATH="$WORKING_DIR/images/azure-linux-trident.cosi"
