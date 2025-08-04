@@ -465,6 +465,7 @@ artifacts/test-image/azl-installer-mos.vhdx: \
 	artifacts/imagecustomizer \
 	$(shell find azl-installer/mos/ -type f)
 	@mkdir -p artifacts/test-image/
+	cd bin/trident_rpms && createrepo_c --compatibility --update .
 
 	sudo ./artifacts/imagecustomizer \
 		--log-level debug \
