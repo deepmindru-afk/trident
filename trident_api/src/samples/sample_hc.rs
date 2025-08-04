@@ -8,8 +8,6 @@ use netplan_types::{
     NetworkConfig,
 };
 
-use sysdefs::tpm2::Pcr;
-
 use crate::{
     config::{
         host::os::{KernelCommandLine, Selinux, SelinuxMode},
@@ -21,6 +19,7 @@ use crate::{
     },
     constants::{self, MOUNT_OPTION_READ_ONLY, ROOT_MOUNT_POINT_PATH},
 };
+use sysdefs::tpm2::Pcr;
 
 const SAMPLE_SHA384: &str = "ec9a9aa23f02b30f4ec6a168b9bc24733b652eeab4f8abc243630666a5e34cea1667c34313a13ec1564ac4871b80112f";
 
@@ -128,7 +127,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     ssh_mode: SshMode::KeyOnly,
                     ..Default::default()
                 }],
-                network: Some(NetworkConfig {
+                netplan: Some(NetworkConfig {
                     version: 2,
                     ethernets: Some(HashMap::from([(
                         "eths".into(),
@@ -322,7 +321,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     ssh_mode: SshMode::KeyOnly,
                     ..Default::default()
                 }],
-                network: Some(NetworkConfig {
+                netplan: Some(NetworkConfig {
                     version: 2,
                     ethernets: Some(HashMap::from([(
                         "eths".into(),
@@ -510,7 +509,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     ssh_mode: SshMode::KeyOnly,
                     ..Default::default()
                 }],
-                network: Some(NetworkConfig {
+                netplan: Some(NetworkConfig {
                     version: 2,
                     ethernets: Some(HashMap::from([(
                         "eths".into(),
@@ -926,7 +925,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     ssh_mode: SshMode::KeyOnly,
                     ..Default::default()
                 }],
-                network: Some(NetworkConfig {
+                netplan: Some(NetworkConfig {
                     version: 2,
                     ethernets: Some(HashMap::from([(
                         "eths".into(),
@@ -1070,7 +1069,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                         ssh_mode: SshMode::KeyOnly,
                         ..Default::default()
                     }],
-                    network: Some(NetworkConfig {
+                    netplan: Some(NetworkConfig {
                         version: 2,
                         ethernets: Some(HashMap::from([(
                             "eths".into(),
@@ -1214,7 +1213,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                         ssh_mode: SshMode::KeyOnly,
                         ..Default::default()
                     }],
-                    network: Some(NetworkConfig {
+                    netplan: Some(NetworkConfig {
                         version: 2,
                         ethernets: Some(HashMap::from([(
                             "eths".into(),
@@ -1378,7 +1377,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                         ssh_mode: SshMode::KeyOnly,
                         ..Default::default()
                     }],
-                    network: Some(NetworkConfig {
+                    netplan: Some(NetworkConfig {
                         version: 2,
                         ethernets: Some(HashMap::from([(
                             "eths".into(),
@@ -1448,7 +1447,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 2);
         assert_eq!(host_configuration.storage.verity.len(), 0);
         assert!(host_configuration.storage.ab_update.is_none());
-        assert!(host_configuration.os.network.is_none());
+        assert!(host_configuration.os.netplan.is_none());
         assert_eq!(host_configuration.os.users.len(), 0);
     }
 
@@ -1462,7 +1461,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 2);
         assert_eq!(host_configuration.storage.verity.len(), 0);
         assert!(host_configuration.storage.ab_update.is_none());
-        assert!(host_configuration.os.network.is_some());
+        assert!(host_configuration.os.netplan.is_some());
         assert_eq!(host_configuration.os.users.len(), 1);
     }
 
@@ -1481,7 +1480,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 5);
         assert_eq!(host_configuration.storage.verity.len(), 0);
         assert!(host_configuration.storage.ab_update.is_some());
-        assert!(host_configuration.os.network.is_some());
+        assert!(host_configuration.os.netplan.is_some());
         assert_eq!(host_configuration.os.users.len(), 1);
     }
 
@@ -1495,7 +1494,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 7);
         assert_eq!(host_configuration.storage.verity.len(), 1);
         assert!(host_configuration.storage.ab_update.is_none());
-        assert!(host_configuration.os.network.is_some());
+        assert!(host_configuration.os.netplan.is_some());
         assert_eq!(host_configuration.os.users.len(), 1);
     }
 
@@ -1514,7 +1513,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 8);
         assert_eq!(host_configuration.storage.verity.len(), 1);
         assert!(host_configuration.storage.ab_update.is_some());
-        assert!(host_configuration.os.network.is_some());
+        assert!(host_configuration.os.netplan.is_some());
         assert_eq!(host_configuration.os.users.len(), 1);
     }
 
@@ -1529,7 +1528,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 2);
         assert_eq!(host_configuration.storage.verity.len(), 0);
         assert!(host_configuration.storage.ab_update.is_none());
-        assert!(host_configuration.os.network.is_some());
+        assert!(host_configuration.os.netplan.is_some());
         assert_eq!(host_configuration.os.users.len(), 1);
     }
 
@@ -1548,7 +1547,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 3);
         assert_eq!(host_configuration.storage.verity.len(), 0);
         assert!(host_configuration.storage.ab_update.is_none());
-        assert!(host_configuration.os.network.is_some());
+        assert!(host_configuration.os.netplan.is_some());
         assert_eq!(host_configuration.os.users.len(), 1);
     }
 
@@ -1563,7 +1562,7 @@ mod tests {
         assert_eq!(host_configuration.storage.filesystems.len(), 3);
         assert_eq!(host_configuration.storage.verity.len(), 0);
         assert!(host_configuration.storage.ab_update.is_none());
-        assert!(host_configuration.os.network.is_some());
+        assert!(host_configuration.os.netplan.is_some());
         assert_eq!(host_configuration.os.users.len(), 1);
     }
 }
