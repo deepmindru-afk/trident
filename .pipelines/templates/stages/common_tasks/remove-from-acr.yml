@@ -37,7 +37,11 @@ steps:
         az acr repository show-tags -n ${{ parameters.registry }} --repository $repository_name
 
         # Delete repository with COSI images
+<<<<<<< HEAD
         for i in {1..3}; do
+=======
+        for i in {1..4}; do
+>>>>>>> 7f5040f79dba1d282aca83c07ad51e8210609370
           tag="v${build_id}.${{ parameters.config }}.${i}"
           if az acr repository show --name ${{ parameters.registry }} --image ${repository_name}:${tag} &> /dev/null; then
             az acr repository delete --name ${{ parameters.registry }} --image ${repository_name}:${tag} --yes
