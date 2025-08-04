@@ -5,10 +5,12 @@ use std::{
 };
 
 use log::{debug, error, info, warn};
+use serde::de;
 #[cfg(feature = "grpc-dangerous")]
 use tokio::sync::mpsc;
 
 use osutils::{chroot, container, installation_media, mount, mountpoint, path::join_relative};
+use tracing_subscriber::field::debug;
 use trident_api::{
     config::{HostConfiguration, Operations},
     constants::{
@@ -375,7 +377,18 @@ pub(crate) fn finalize_clean_install(
             .internal_params
             .get_flag(DISABLE_MEDIA_EJECTION)
         {
-            installation_media::media_ejection();
+            if let Err(e) = installation_media::media_ejection() {
+                warn!("Media ejection failed: {e:?}");
+            }
+            info!(
+                "Waiting 10 seconds before proceeding with reboot to allow ejection to complete..."
+            );
+            std::thread::sleep(std::time::Duration::from_secs(10));
+        } else {
+            debug!(
+                "Skipping media ejection as requested by internal parameter '{}'",
+                DISABLE_MEDIA_EJECTION
+            );
         }
         Ok(ExitKind::NeedsReboot)
     } else {

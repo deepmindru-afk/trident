@@ -25,6 +25,8 @@ os:
     mode: disabled
   users:
     - name: {{ .Username }}
+      secondaryGroups:
+        - wheel
 scripts:
   postConfigure:
     - name: user-password

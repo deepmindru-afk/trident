@@ -460,11 +460,17 @@ bin/manualrun: \
 
 artifacts/test-image/azl-installer-mos.vhdx: \
 	artifacts/baremetal.vhdx \
-	bin/trident_rpms/ \
+	bin/trident-rpms-azl3.tar.gz \
 	azl-installer/mos/mos.yaml \
 	artifacts/imagecustomizer \
 	$(shell find azl-installer/mos/ -type f)
 	@mkdir -p artifacts/test-image/
+	sudo rm -rf bin/trident_rpms
+	mkdir -p bin/trident_rpms
+	$(eval TEMP_DIR := $(shell mktemp -d))
+	tar -xf bin/trident-rpms-azl3.tar.gz -C $(TEMP_DIR)
+	cp $(TEMP_DIR)/RPMS/*/*.rpm bin/trident_rpms/
+	rm -rf $(TEMP_DIR) 
 
 	sudo ./artifacts/imagecustomizer \
 		--log-level debug \

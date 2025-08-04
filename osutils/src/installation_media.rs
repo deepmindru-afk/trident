@@ -1,7 +1,9 @@
+use anyhow::{Context, Error};
 use log::{debug, info, warn};
-use std::{fs, process::Command};
+use std::fs;
 
-#[derive(Debug, PartialEq, Clone)]
+use crate::dependencies::Dependency;
+
 pub enum BootType {
     /// System is running from a RAM disk
     RamDisk,
@@ -11,8 +13,9 @@ pub enum BootType {
     PersistentStorage,
 }
 
-pub fn detect_boot_type() -> Result<BootType, std::io::Error> {
-    let cmdline = fs::read_to_string("/proc/cmdline")?;
+pub fn detect_boot_type() -> Result<BootType, Error> {
+    let cmdline = fs::read_to_string("/proc/cmdline")
+        .with_context(|| "Failed to read /proc/cmdline to detect boot type")?;
 
     if cmdline.contains("root=/dev/ram0") || !cmdline.contains("root=") {
         debug!("RAM disk boot detected");
@@ -26,32 +29,29 @@ pub fn detect_boot_type() -> Result<BootType, std::io::Error> {
     }
 }
 
-pub fn eject_media() -> Result<(), std::io::Error> {
+pub fn eject_media() -> Result<(), Error> {
     info!("Attempting to eject installation media");
 
-    match Command::new("eject").args(["--cdrom", "--force"]).output() {
-        Ok(output) if output.status.success() => {
+    let result = Dependency::Eject
+        .cmd()
+        .args(["--cdrom", "--force"])
+        .output_and_check()
+        .context("Failed to eject installation media");
+
+    match result {
+        Ok(_) => {
             info!("Successfully ejected installation media");
             Ok(())
         }
-        Ok(output) => {
-            warn!("eject command failed with exit code: {}", output.status);
-            if !output.stderr.is_empty() {
-                warn!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-            }
-            Err(std::io::Error::other(format!(
-                "eject command failed with exit code: {}",
-                output.status
-            )))
-        }
         Err(e) => {
-            warn!("Failed to execute eject command: {e:?}");
+            warn!("Failed to eject installation media: {e:?}");
             Err(e)
         }
     }
 }
 
-pub fn media_ejection() {
+pub fn media_ejection() -> Result<(), Error> {
+    info!("Attempting to eject installation media");
     match detect_boot_type() {
         Ok(BootType::RamDisk) => {
             if let Err(e) = eject_media() {
@@ -68,4 +68,6 @@ pub fn media_ejection() {
             warn!("Unable to detect boot type: {e:?} - skipping installation media ejection");
         }
     }
+
+    Ok(())
 }
