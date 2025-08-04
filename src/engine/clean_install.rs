@@ -1,5 +1,4 @@
 use std::{
-    fs,
     path::{Path, PathBuf},
     sync::MutexGuard,
     time::Instant,
@@ -35,31 +34,6 @@ use crate::{
 use crate::{grpc, GrpcSender};
 
 use super::{NewrootMount, Subsystem};
-
-/// Handles installation media ejection based on boot type and configuration
-fn installation_media_ejection(spec: &HostConfiguration) {
-    if spec.internal_params.get_flag(DISABLE_MEDIA_EJECTION) {
-        info!("Installation media ejection disabled by configuration");
-        return;
-    }
-
-    match installation_media::detect_boot_type() {
-        Ok(installation_media::BootType::RamDisk) => {
-            info!("RAM disk boot detected - proceeding with installation media ejection");
-            installation_media::eject_installation_media();
-        }
-        Ok(installation_media::BootType::LiveCdrom) => {
-            info!("Live CD-ROM boot detected - showing appropriate warning message");
-            installation_media::eject_installation_media();
-        }
-        Ok(installation_media::BootType::PersistentStorage) => {
-            debug!("Persistent storage boot - no installation media ejection needed");
-        }
-        Err(e) => {
-            warn!("Unable to detect boot type: {e:?} - skipping installation media ejection");
-        }
-    }
-}
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn clean_install(
@@ -137,17 +111,19 @@ fn clean_install_safety_check(
     multiboot: bool,
 ) -> Result<(), TridentError> {
     // Check if Trident is running from a live image
-    let cmdline =
-        fs::read_to_string("/proc/cmdline").structured(InitializationError::ReadCmdline)?;
-    if cmdline.contains("root=/dev/ram0")
-        || cmdline.contains("root=live:LABEL=CDROM")
-        || !cmdline.contains("root=")
-    {
-        debug!("Trident is running from a live image.");
-        return Ok(());
+    match installation_media::detect_boot_type() {
+        Ok(installation_media::BootType::RamDisk) | Ok(installation_media::BootType::LiveCdrom) => {
+            debug!("Trident is running from a live image.");
+            return Ok(());
+        }
+        Ok(installation_media::BootType::PersistentStorage) => {
+            warn!("Trident is running from an OS installed on persistent storage");
+        }
+        Err(e) => {
+            warn!("Unable to detect boot type: {e:?} - assuming persistent storage");
+            warn!("Trident is running from an OS installed on persistent storage");
+        }
     }
-
-    warn!("Trident is running from an OS installed on persistent storage");
 
     // To go past this point in the safety check we NEED multiboot
     if !multiboot {
@@ -387,14 +363,20 @@ pub(crate) fn finalize_clean_install(
 
     storage::check_block_devices(state.host_status());
 
-    installation_media_ejection(&state.host_status().spec);
-
     if !state
         .host_status()
         .spec
         .internal_params
         .get_flag(NO_TRANSITION)
     {
+        if !state
+            .host_status()
+            .spec
+            .internal_params
+            .get_flag(DISABLE_MEDIA_EJECTION)
+        {
+            installation_media::media_ejection();
+        }
         Ok(ExitKind::NeedsReboot)
     } else {
         warn!(
