@@ -37,7 +37,7 @@ use crate::{grpc, GrpcSender};
 use super::{NewrootMount, Subsystem};
 
 /// Handles installation media ejection based on boot type and configuration
-fn handle_installation_media_ejection(spec: &HostConfiguration) {
+fn installation_media_ejection(spec: &HostConfiguration) {
     if spec.internal_params.get_flag(DISABLE_MEDIA_EJECTION) {
         info!("Installation media ejection disabled by configuration");
         return;
@@ -46,11 +46,11 @@ fn handle_installation_media_ejection(spec: &HostConfiguration) {
     match installation_media::detect_boot_type() {
         Ok(installation_media::BootType::RamDisk) => {
             info!("RAM disk boot detected - proceeding with installation media ejection");
-            installation_media::eject_installation_media_smart();
+            installation_media::eject_installation_media();
         }
         Ok(installation_media::BootType::LiveCdrom) => {
             info!("Live CD-ROM boot detected - showing appropriate warning message");
-            installation_media::eject_installation_media_smart(); // This will show the live CD-ROM warning
+            installation_media::eject_installation_media();
         }
         Ok(installation_media::BootType::PersistentStorage) => {
             debug!("Persistent storage boot - no installation media ejection needed");
@@ -387,8 +387,7 @@ pub(crate) fn finalize_clean_install(
 
     storage::check_block_devices(state.host_status());
 
-    // Handle installation media ejection based on boot scenario and configuration
-    handle_installation_media_ejection(&state.host_status().spec);
+    installation_media_ejection(&state.host_status().spec);
 
     if !state
         .host_status()
