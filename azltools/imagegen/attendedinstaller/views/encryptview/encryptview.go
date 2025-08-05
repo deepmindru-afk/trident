@@ -33,9 +33,7 @@ type EncryptView struct {
 	flex                 *tview.Flex
 	centeredFlex         *tview.Flex
 	passwordValidator    *crunchy.Validator
-
-	cfg       *configuration.Config
-	sysConfig *configuration.SystemConfig
+	hostConfigData       *configuration.TridentConfigData
 }
 
 // New creates and returns a new EncryptView.
@@ -46,11 +44,8 @@ func New() *EncryptView {
 }
 
 // Initialize initializes the view.
-func (ev *EncryptView) Initialize(backButtonText string, sysConfig *configuration.SystemConfig, cfg *configuration.Config, app *tview.Application, nextPage, previousPage, quit, refreshTitle func()) (err error) {
-
-	ev.sysConfig = sysConfig
-	ev.cfg = cfg
-
+func (ev *EncryptView) Initialize(hostConfigData *configuration.TridentConfigData, backButtonText string, app *tview.Application, nextPage, previousPage, quit, refreshTitle func()) (err error) {
+	ev.hostConfigData = hostConfigData
 	ev.passwordField = tview.NewInputField().
 		SetFieldWidth(passwordFieldWidth).
 		SetLabel(uitext.EncryptPasswordLabel).
@@ -64,11 +59,9 @@ func (ev *EncryptView) Initialize(backButtonText string, sysConfig *configuratio
 	ev.navBar = navigationbar.NewNavigationBar().
 		AddButton(backButtonText, previousPage).
 		AddButton(uitext.ButtonNext, func() {
-			ev.onNextButton(nextPage, cfg)
+			ev.onNextButton(nextPage)
 		}).
 		AddButton(uitext.SkipEncryption, func() {
-			ev.sysConfig.Encryption.Enable = false
-			ev.sysConfig.Encryption.Password = ""
 			nextPage()
 		}).
 		SetAlign(tview.AlignCenter).
@@ -119,15 +112,12 @@ func (ev *EncryptView) Reset() (err error) {
 	ev.navBar.SetSelectedButton(noSelection)
 	ev.form.SetFocus(0)
 
-	ev.sysConfig.Encryption.Password = ""
-	ev.sysConfig.Encryption.Enable = false
-
 	return
 }
 
 // Name returns the friendly name of the view.
 func (ev *EncryptView) Name() string {
-	return "ENCRYPTDISK"
+	return "ENCRYPTION"
 }
 
 // Title returns the title of the view.
@@ -144,7 +134,7 @@ func (ev *EncryptView) Primitive() tview.Primitive {
 func (ev *EncryptView) OnShow() {
 }
 
-func (ev *EncryptView) onNextButton(nextPage func(), cfg *configuration.Config) {
+func (ev *EncryptView) onNextButton(nextPage func()) {
 	ev.navBar.ClearUserFeedback()
 	enteredPassword := ev.passwordField.GetText()
 
@@ -159,9 +149,7 @@ func (ev *EncryptView) onNextButton(nextPage func(), cfg *configuration.Config) 
 		return
 	}
 
-	ev.sysConfig.Encryption.Enable = true
-	ev.sysConfig.Encryption.Password = enteredPassword
-	rootDiskPart := ev.cfg.GetDiskPartByID(ev.sysConfig.GetRootPartitionSetting().ID)
-	rootDiskPart.Flags = append(rootDiskPart.Flags, configuration.PartitionFlagDeviceMapperRoot)
+	ev.hostConfigData.EncryptionKey = enteredPassword
+
 	nextPage()
 }
