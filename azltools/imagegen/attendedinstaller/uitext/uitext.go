@@ -87,9 +87,9 @@ const (
 // EncryptView text.
 const (
 	EncryptTitle                = "Enter Disk Encryption Password"
-	SkipEncryption              = "[Skip Disk Encryption[]"
-	EncryptPasswordLabel        = "* Disk Encryption Password"
-	ConfirmEncryptPasswordLabel = "* Confirm Disk Encryption Password"
+	SkipEncryption              = "[Skip Encryption[]"
+	EncryptPasswordLabel        = "* Encryption Password"
+	ConfirmEncryptPasswordLabel = "* Confirm Encryption Password"
 )
 
 // InstallerView text.

@@ -20,10 +20,11 @@ storage:
     recoveryKeyUrl: file://{{ .RecoveryKeyPath }}
     volumes:
       - id: encrypted-system
+        deviceName: encrypted-system
         deviceId: system
-        deviceName: luks-system
   filesystems:
     - deviceId: encrypted-system
+      source: new
       mountPoint: /encrypted-system
     - deviceId: root
       mountPoint: /
@@ -40,7 +41,7 @@ os:
         - wheel
   additionalFiles:
     - source: {{ .RecoveryKeyPath }}
-      dest: /recovery/recovery.key
+      destination: /recovery/recovery.key
       permissions: 0400
 scripts:
   postConfigure:
