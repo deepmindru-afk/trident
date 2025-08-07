@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"text/template"
+
+	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 //go:embed template/host-config.yaml.tmpl
@@ -64,9 +67,14 @@ func RenderTridentHostConfig(configPath string, configData *TridentConfigData) e
 	return tmpl.Execute(out, configData)
 }
 
-// Creates the password script at the given path
 func passwordScript(passwordScriptPath string, configData *TridentConfigData) (err error) {
-	script := fmt.Sprintf("echo '%s:%s' | chpasswd\n", configData.Username, configData.Password)
+	// Hash the password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(configData.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	script := fmt.Sprintf("echo '%s:%s' | chpasswd -e\n", configData.Username, hashedPassword)
 	dir := filepath.Dir(passwordScriptPath)
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return
@@ -77,39 +85,13 @@ func passwordScript(passwordScriptPath string, configData *TridentConfigData) (e
 	return
 }
 
-// Generates a recovery key using a password
 func generateRecoveryKeyFromPassword(keyPath, password string) error {
-	// Use a simple but deterministic key derivation
 	salt := []byte("trident_recovery_salt_v1")
 	iterations := 100000
 	keyLength := 64
 
-	// Simple PBKDF2-like implementation using repeated hashing
-	key := make([]byte, keyLength)
-	current := sha256.Sum256(append([]byte(password), salt...))
+	key := pbkdf2.Key([]byte(password), salt, iterations, keyLength, sha256.New)
 
-	// Multiple rounds for key stretching
-	for i := 0; i < iterations; i++ {
-		h := sha256.New()
-		h.Write(current[:])
-		h.Write([]byte(password))
-		h.Write(salt)
-		current = [32]byte(h.Sum(nil))
-	}
-
-	// Expand to 64 bytes
-	for i := 0; i < keyLength; i += 32 {
-		copy(key[i:], current[:])
-		if i+32 < keyLength {
-			// Generate next 32 bytes
-			h := sha256.New()
-			h.Write(current[:])
-			h.Write([]byte{byte(i / 32)})
-			current = [32]byte(h.Sum(nil))
-		}
-	}
-
-	// Write key to file with proper permissions
 	if err := os.WriteFile(keyPath, key, 0400); err != nil {
 		return fmt.Errorf("failed to write recovery key: %w", err)
 	}

@@ -1,8 +1,8 @@
 module azltools
 
-go 1.21
+go 1.23.0
 
-toolchain go1.21.6
+toolchain go1.24.1
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
@@ -16,7 +16,7 @@ require (
 	github.com/rivo/tview v0.0.0-20200219135020-0ba8301b415c
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/sys v0.28.0
+	golang.org/x/sys v0.34.0
 	gonum.org/v1/gonum v0.15.0
 )
 
@@ -34,8 +34,9 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
+	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/text v0.27.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
