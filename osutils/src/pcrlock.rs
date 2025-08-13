@@ -22,7 +22,7 @@ use crate::{
     bootloaders::{BOOT_EFI, GRUB_EFI},
     container,
     dependencies::Dependency,
-    efivar,
+    efivar::{self, SBAT_LEVEL, SHIM_VARIABLE_GUID},
     exe::RunAndCheck,
     path,
 };
@@ -39,35 +39,40 @@ pub const PCRLOCK_POLICY_JSON_PATH: &str = "/var/lib/systemd/pcrlock.json";
 
 /// Sub-dirs inside PCRLOCK_DIR, i.e. `/var/lib/pcrlock.d`, for dynamically generated .pcrlock
 /// files that might contain 1+ .pcrlock files, for the current and update images:
-/// 1. `/var/lib/pcrlock.d/600-gpt.pcrlock.d`, where `lock-gpt` measures the GPT partition table of
+///
+/// 1. `/var/lib/pcrlock.d/230-secure-boot-policy.pcrlock.d`, where Trident measures the SbatLevel
+///    efi var, or .sbat of shim, if `SecureBoot` is disabled, as recorded to PCR 7 by shim,
+const SECURE_BOOT_POLICY_PCRLOCK_DIR: &str = "230-secure-boot-policy.pcrlock.d";
+
+/// 2. `/var/lib/pcrlock.d/600-gpt.pcrlock.d`, where `lock-gpt` measures the GPT partition table of
 ///    the booted medium, as recorded to PCR 5 by the firmware,
 #[allow(dead_code)]
 const GPT_PCRLOCK_DIR: &str = "600-gpt.pcrlock.d";
 
-/// 2. `/var/lib/pcrlock.d/630-boot-loader-code-shim.pcrlock.d`, where Trident measures the
+/// 3. `/var/lib/pcrlock.d/630-boot-loader-code-shim.pcrlock.d`, where Trident measures the
 ///    shim bootloader binary, i.e. `/EFI/AZL{A/B}/bootx64.efi`, as recorded into PCR 4 following
 ///    Microsoft's Authenticode hash spec,
 const BOOT_LOADER_CODE_SHIM_PCRLOCK_DIR: &str = "630-boot-loader-code-shim.pcrlock.d";
 
-/// 3. `/var/lib/pcrlock.d/640-boot-loader-code-sdboot.pcrlock.d`, where Trident measures the
+/// 4. `/var/lib/pcrlock.d/640-boot-loader-code-sdboot.pcrlock.d`, where Trident measures the
 ///    systemd-boot bootloader binary, i.e. `/EFI/AZL{A/B}/grubx64.efi`, as recorded into PCR 4
 ///    following Microsoft's Authenticode hash spec,
 const BOOT_LOADER_CODE_SDBOOT_PCRLOCK_DIR: &str = "640-boot-loader-code-sdboot.pcrlock.d";
 
-/// 4. `/var/lib/pcrlock.d/650-uki.pcrlock.d`, where `lock-uki` measures the UKI binary, as
+/// 5. `/var/lib/pcrlock.d/650-uki.pcrlock.d`, where `lock-uki` measures the UKI binary, as
 ///    recorded into PCR 4,
 const UKI_PCRLOCK_DIR: &str = "650-uki.pcrlock.d";
 
-/// 5. `/var/lib/pcrlock.d/660-boot-loader-code-uki.pcrlock.d`, where Trident measures the raw UKI
+/// 6. `/var/lib/pcrlock.d/660-boot-loader-code-uki.pcrlock.d`, where Trident measures the raw UKI
 ///    binary, as recorded into PCR 4 following Microsoft's Authenticode hash spec,
 const BOOT_LOADER_CODE_UKI_PCRLOCK_DIR: &str = "660-boot-loader-code-uki.pcrlock.d";
 
-/// 6. `/var/lib/pcrlock.d/710-kernel-cmdline.pcrlock.d`, where `lock-kernel-cmdline` measures the
+/// 7. `/var/lib/pcrlock.d/710-kernel-cmdline.pcrlock.d`, where `lock-kernel-cmdline` measures the
 ///    kernel command line, as recorded into PCR 9,
 #[allow(dead_code)]
 const KERNEL_CMDLINE_PCRLOCK_DIR: &str = "710-kernel-cmdline.pcrlock.d";
 
-/// 7. `/var/lib/pcrlock.d/720-kernel-initrd.pcrlock.d`, where Trident measures the initrd section of
+/// 8. `/var/lib/pcrlock.d/720-kernel-initrd.pcrlock.d`, where Trident measures the initrd section of
 ///    the UKI binary, as recorded into PCR 9.
 #[allow(dead_code)]
 const KERNEL_INITRD_PCRLOCK_DIR: &str = "720-kernel-initrd.pcrlock.d";
@@ -680,13 +685,14 @@ fn generate_pcrlock_files(
                     generate_pcrlock_output_path(BOOT_LOADER_CODE_UKI_PCRLOCK_DIR, index);
                 debug!(
                     "SecureBoot is disabled, so generating .pcrlock file at '{}' \
-                    to measure .linux section of UKI PE binary at '{}'",
+                    to record measurement of .linux section of UKI PE binary at '{}' into PCR 4",
                     pcrlock_file.clone().display(),
                     uki_path.clone().display()
                 );
                 generate_linux_authenticode(uki_path.clone(), pcrlock_file.clone()).context(
                     format!(
-                        "Failed to generate .pcrlock file at '{}' for .linux section of UKI PE binary at '{}'",
+                        "Failed to generate .pcrlock file at '{}' \
+                        to record measurement of .linux section of UKI PE binary at '{}' into PCR 4",
                         pcrlock_file.display(),
                         uki_path.display()
                     ),
@@ -695,6 +701,24 @@ fn generate_pcrlock_files(
         }
     } else {
         debug!("Skipping generating bootloader and UKI .pcrlock files as PCR 4 is not requested");
+    }
+
+    // Generate .pcrlock files if PCR 7 is requested
+    if pcrs.contains(Pcr::Pcr7) {
+        // If SecureBoot is disabled, then SbatLevel efi var is measured
+        if !efivar::secure_boot_is_enabled() {
+            let pcrlock_file = generate_pcrlock_output_path(SECURE_BOOT_POLICY_PCRLOCK_DIR, 0);
+            debug!(
+                "SecureBoot is disabled, so generating .pcrlock file at '{}' \
+                    to record measurement of SbatLevel EFI variable into PCR 7",
+                pcrlock_file.clone().display(),
+            );
+            generate_sbat_level_pcrlock(pcrlock_file.clone()).context(format!(
+                "Failed to generate .pcrlock file at '{}' \
+                to record measurement of SbatLevel EFI variable into PCR 7",
+                pcrlock_file.display()
+            ))?;
+        }
     }
 
     // Parse the 'systemd-pcrlock log' output to validate that every log entry has been matched to
@@ -847,6 +871,63 @@ fn generate_linux_authenticode(uki_path: PathBuf, pcrlock_file: PathBuf) -> Resu
             uki_path.display()
         ),
     )?;
+    Ok(())
+}
+
+/// If `SecureBoot` is disabled, generates .pcrlock file under
+/// /var/lib/pcrlock.d/230-secure-boot-policy.pcrlock.d, where Trident measures the SbatLevel EFI
+/// variable, as recorded into PCR 7.
+fn generate_sbat_level_pcrlock(pcrlock_file: PathBuf) -> Result<()> {
+    let sbatlevel_var = efivar::read_sbat_level_var().unstructured(
+        "Failed to read SbatLevel EFI variable to generate .pcrlock file for PCR 7",
+    )?;
+
+    // Hash with official SBAT GUID and "SbatLevel" label
+    let guid = uuid::Uuid::parse_str(SHIM_VARIABLE_GUID)
+        .map_err(|e| anyhow::anyhow!("Failed to parse SBAT policy GUID: {e}"))?;
+    let guid_bytes = guid.as_bytes();
+    let label_bytes = SBAT_LEVEL.as_bytes();
+    let sbat_bytes = sbatlevel_var.as_bytes();
+
+    let mut hasher = Sha256::new();
+    hasher.update(guid_bytes);
+    hasher.update(label_bytes);
+    hasher.update(sbat_bytes);
+    let digest = hasher.finalize();
+
+    let digests = vec![DigestEntry {
+        hash_alg: "sha256",
+        digest: hex::encode(digest),
+    }];
+
+    let pcrlock = PcrLock {
+        records: vec![Record {
+            pcr: Pcr::Pcr7.to_num(),
+            digests,
+        }],
+    };
+
+    if let Some(parent) = pcrlock_file.parent() {
+        fs::create_dir_all(parent).context(format!(
+            "Failed to create directory for .pcrlock file at '{}'",
+            pcrlock_file.display()
+        ))?;
+    }
+    let json = serde_json::to_string(&pcrlock).context(format!(
+        "Failed to serialize .pcrlock file '{}' as JSON",
+        pcrlock_file.display()
+    ))?;
+    fs::write(&pcrlock_file, json.clone()).context(format!(
+        "Failed to write .pcrlock file at '{}'",
+        pcrlock_file.display()
+    ))?;
+
+    trace!(
+        "Contents of .pcrlock file at '{}':\n{}",
+        pcrlock_file.display(),
+        json
+    );
+
     Ok(())
 }
 

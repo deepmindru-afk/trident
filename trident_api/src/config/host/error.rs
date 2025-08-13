@@ -187,13 +187,13 @@ pub enum HostConfigurationDynamicValidationError {
     EncryptionKeyNotRegularFile { key_file: String },
 
     #[error(
-        "Since update image is a grub image, list of PCRs in encryption config contains invalid PCRs: '{pcrs}'. \
+        "Since update image is a grub image, list of PCRs in encryption config contains invalid PCRs: {pcrs}. \
         Only PCR 7 is valid for grub images"
     )]
     InvalidEncryptionPcrsForGrubImage { pcrs: String },
 
     #[error(
-        "Since update image is a UKI image, list of PCRs in encryption config contains invalid PCRs: '{pcrs}'"
+        "Since update image is a UKI image, list of PCRs in encryption config contains invalid PCRs: {pcrs}"
     )]
     InvalidEncryptionPcrsForUkiImage { pcrs: String },
 

@@ -93,16 +93,11 @@ pub(super) fn validate_host_config(ctx: &EngineContext) -> Result<(), TridentErr
         // but we also need to ensure that only valid PCRs are specified for each image type.
         if !encryption.pcrs.is_empty() {
             if ctx.is_uki()? {
-                // TODO: Currently, we cannot seal to PCR 7 for grub MOS -> UKI ROS scenario b/c
-                // not all measurements are recognized by the .pcrlock file generation logic. Once
-                // that is resolved, we include PCR 7 into the valid list. For now, only PCRs 4 and
-                // 11 are valid. Related ADO tasks:
-                // https://dev.azure.com/mariner-org/polar/_workitems/edit/14523/ and
-                // https://dev.azure.com/mariner-org/polar/_workitems/edit/14455/.
+                let uki_pcrs = [Pcr::Pcr4, Pcr::Pcr7, Pcr::Pcr11];
                 let invalid_pcrs: Vec<_> = encryption
                     .pcrs
                     .iter()
-                    .filter(|&&pcr| pcr != Pcr::Pcr4 && pcr != Pcr::Pcr11)
+                    .filter(|&&pcr| !uki_pcrs.contains(&pcr))
                     .cloned()
                     .collect();
 
@@ -571,9 +566,9 @@ mod tests {
         ctx.is_uki = Some(true);
         {
             let encryption = ctx.spec.storage.encryption.as_mut().unwrap();
-            encryption.pcrs = vec![Pcr::Pcr4, Pcr::Pcr7, Pcr::Pcr11];
+            encryption.pcrs = vec![Pcr::Pcr4, Pcr::Pcr7, Pcr::Pcr11, Pcr::Pcr8];
         }
-        let pcrs_str = [Pcr::Pcr7]
+        let pcrs_str = [Pcr::Pcr8]
             .iter()
             .map(|pcr| pcr.to_num().to_string())
             .collect::<Vec<_>>()
@@ -590,7 +585,7 @@ mod tests {
         // Test case #3: If OS image is a UKI image AND PCRs only include 4 and 11, then pass.
         {
             let encryption = ctx.spec.storage.encryption.as_mut().unwrap();
-            encryption.pcrs = vec![Pcr::Pcr4, Pcr::Pcr11];
+            encryption.pcrs = vec![Pcr::Pcr4, Pcr::Pcr7, Pcr::Pcr11];
         }
         validate_host_config(&ctx).unwrap();
     }
