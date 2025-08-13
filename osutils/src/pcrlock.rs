@@ -22,7 +22,7 @@ use crate::{
     bootloaders::{BOOT_EFI, GRUB_EFI},
     container,
     dependencies::Dependency,
-    efivar::{self, SBAT_LEVEL, SHIM_VARIABLE_GUID},
+    efivar::{self, SBAT_LEVEL, SHIM_LOCK_GUID},
     exe::RunAndCheck,
     path,
 };
@@ -875,26 +875,25 @@ fn generate_linux_authenticode(uki_path: PathBuf, pcrlock_file: PathBuf) -> Resu
 }
 
 /// If `SecureBoot` is disabled, generates .pcrlock file under
-/// /var/lib/pcrlock.d/230-secure-boot-policy.pcrlock.d, where Trident measures the SbatLevel EFI
-/// variable, as recorded into PCR 7.
+/// /var/lib/pcrlock.d/230-secure-boot-policy.pcrlock.d, where Trident measures SBAT_VAR_ORIGINAL,
+/// as recorded into PCR 7.
 fn generate_sbat_level_pcrlock(pcrlock_file: PathBuf) -> Result<()> {
-    let sbatlevel_var = efivar::read_sbat_level_var().unstructured(
-        "Failed to read SbatLevel EFI variable to generate .pcrlock file for PCR 7",
-    )?;
+    // Fixed original SBAT string from shim fallback
+    const SBAT_VAR_ORIGINAL: &[u8] = b"sbat,1,2021030218\n";
 
-    // Hash with official SBAT GUID and "SbatLevel" label
-    let guid = uuid::Uuid::parse_str(SHIM_VARIABLE_GUID)
-        .map_err(|e| anyhow::anyhow!("Failed to parse SBAT policy GUID: {e}"))?;
+    // Parse the SBAT GUID once
+    let guid = uuid::Uuid::parse_str(SHIM_LOCK_GUID).context("Failed to parse SBAT policy GUID")?;
     let guid_bytes = guid.as_bytes();
     let label_bytes = SBAT_LEVEL.as_bytes();
-    let sbat_bytes = sbatlevel_var.as_bytes();
 
+    // Hash GUID + label + fallback SBAT string
     let mut hasher = Sha256::new();
     hasher.update(guid_bytes);
     hasher.update(label_bytes);
-    hasher.update(sbat_bytes);
+    hasher.update(SBAT_VAR_ORIGINAL);
     let digest = hasher.finalize();
 
+    // Create digest entries for the PCR lock file
     let digests = vec![DigestEntry {
         hash_alg: "sha256",
         digest: hex::encode(digest),
@@ -913,10 +912,12 @@ fn generate_sbat_level_pcrlock(pcrlock_file: PathBuf) -> Result<()> {
             pcrlock_file.display()
         ))?;
     }
+
     let json = serde_json::to_string(&pcrlock).context(format!(
         "Failed to serialize .pcrlock file '{}' as JSON",
         pcrlock_file.display()
     ))?;
+
     fs::write(&pcrlock_file, json.clone()).context(format!(
         "Failed to write .pcrlock file at '{}'",
         pcrlock_file.display()

@@ -9,7 +9,7 @@ use crate::dependencies::{Dependency, DependencyResultExt};
 
 const BOOTLOADER_INTERFACE_GUID: &str = "4a67b082-0a4c-41cf-b6c7-440b29bb8c4f";
 const EFI_GLOBAL_VARIABLE_GUID: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
-pub(crate) const SHIM_VARIABLE_GUID: &str = "605dab50-e046-4300-abb6-3dd810dd8b23";
+pub(crate) const SHIM_LOCK_GUID: &str = "605dab50-e046-4300-abb6-3dd810dd8b23";
 
 const SECURE_BOOT: &str = "SecureBoot";
 pub(crate) const SBAT_LEVEL: &str = "SbatLevel";
@@ -138,14 +138,6 @@ pub fn read_current_var() -> Result<String, TridentError> {
     Ok(decode_utf16le(&data))
 }
 
-/// Returns the value of the SbatLevel EFI variable. This represents the SBAT (Secure Boot Advanced
-/// Targeting), which is a security versioning mechanism embedded in key bootloader binaries, such
-/// as shim.
-pub fn read_sbat_level_var() -> Result<String, TridentError> {
-    let data = read_efi_variable(SHIM_VARIABLE_GUID, SBAT_LEVEL)?;
-    Ok(decode_utf16le(&data))
-}
-
 /// Sets the LoaderEntryDefault EFI variable to the current boot entry
 pub fn set_default_to_current() -> Result<(), TridentError> {
     let current = read_efi_variable(BOOTLOADER_INTERFACE_GUID, LOADER_ENTRY_SELECTED)?;
@@ -233,11 +225,5 @@ mod functional_test {
 
         // The function should return true b/c SecureBoot is now enabled on FT VM
         assert!(secure_boot_enabled);
-    }
-
-    #[functional_test(feature = "helpers")]
-    fn test_sbat_level() {
-        let sbat_level = read_sbat_level_var().unwrap();
-        assert_eq!(sbat_level, "1.0");
     }
 }
