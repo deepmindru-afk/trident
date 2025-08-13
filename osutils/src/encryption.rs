@@ -344,7 +344,7 @@ mod functional_test {
     use crate::{
         filesystems::MkfsFileSystemType,
         mkfs,
-        pcrlock::{self, PCRLOCK_DIR},
+        pcrlock::{self, PcrlockBinarySet, PCRLOCK_DIR},
         repart::{RepartEmptyMode, RepartPartitionEntry, SystemdRepartInvoker},
         testutils::repart::{self, TEST_DISK_DEVICE_PATH},
         udevadm,
@@ -419,7 +419,12 @@ mod functional_test {
         copy_static_pcrlock_files();
         // Generate a pcrlock policy that only includes PCR 0
         let pcrs = BitFlags::from(Pcr::Pcr0);
-        pcrlock::generate_pcrlock_policy(pcrs, vec![], vec![]).unwrap();
+        let pcrlock_binaries = PcrlockBinarySet {
+            uki_binaries: None,
+            shim_binaries: None,
+            systemd_boot_binaries: None,
+        };
+        pcrlock::generate_pcrlock_policy(pcrs, pcrlock_binaries).unwrap();
 
         // Run `systemd-cryptenroll` on the partition
         systemd_cryptenroll(key_file_path, &partition1.node, None).unwrap();
@@ -561,7 +566,12 @@ mod functional_test {
         copy_static_pcrlock_files();
         // Generate a pcrlock policy that only includes PCR 0
         let pcrs = BitFlags::from(Pcr::Pcr0);
-        pcrlock::generate_pcrlock_policy(pcrs, vec![], vec![]).unwrap();
+        let pcrlock_binaries = PcrlockBinarySet {
+            uki_binaries: None,
+            shim_binaries: None,
+            systemd_boot_binaries: None,
+        };
+        pcrlock::generate_pcrlock_policy(pcrs, pcrlock_binaries).unwrap();
 
         // Run `systemd-cryptenroll` on the partition
         systemd_cryptenroll(key_file_path, &partition1.node, None).unwrap();

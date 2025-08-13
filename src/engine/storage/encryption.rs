@@ -19,7 +19,7 @@ use osutils::{
     encryption::{self, KeySlotType, DEFAULT_PCR},
     lsblk::{self, BlockDeviceType},
     path::join_relative,
-    pcrlock,
+    pcrlock::{self, PcrlockBinarySet},
 };
 use sysdefs::tpm2::Pcr;
 use trident_api::{
@@ -148,7 +148,12 @@ pub(super) fn create_encrypted_devices(
                 pcrlock::remove_policy().structured(ServicingError::RemovePcrlockPolicy)?;
 
                 // Generate a pcrlock policy
-                pcrlock::generate_pcrlock_policy(BitFlags::from(Pcr::Pcr0), vec![], vec![])?;
+                let pcrlock_binaries = PcrlockBinarySet {
+                    uki_binaries: None,
+                    shim_binaries: None,
+                    systemd_boot_binaries: None,
+                };
+                pcrlock::generate_pcrlock_policy(BitFlags::from(Pcr::Pcr0), pcrlock_binaries)?;
                 None
             }
         } else {
@@ -159,8 +164,14 @@ pub(super) fn create_encrypted_devices(
             // Remove any pre-existing policy
             pcrlock::remove_policy().structured(ServicingError::RemovePcrlockPolicy)?;
 
+            // TODO: WE HAVE TO SEAL TO BOOTSTRAPPING PCRLOCK POLICY OF 0 B/C WE CANNOT ACCESS ANY BINARIES
             // Generate a pcrlock policy of the default PCR 7
-            pcrlock::generate_pcrlock_policy(BitFlags::from(DEFAULT_PCR), vec![], vec![])?;
+            let pcrlock_binaries = PcrlockBinarySet {
+                uki_binaries: None,
+                shim_binaries: None,
+                systemd_boot_binaries: None,
+            };
+            pcrlock::generate_pcrlock_policy(BitFlags::from(DEFAULT_PCR), pcrlock_binaries)?;
             None
         };
 
@@ -338,10 +349,14 @@ pub fn get_binary_paths_pcrlock(
     ctx: &EngineContext,
     pcrs: BitFlags<Pcr>,
     mount_path: Option<&Path>,
-) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Error> {
-    // If neither PCR 4 nor 11 are requested, no binaries are needed
-    if !pcrs.contains(Pcr::Pcr4) && !pcrs.contains(Pcr::Pcr11) {
-        return Ok((vec![], vec![]));
+) -> Result<PcrlockBinarySet, Error> {
+    // If neither PCR 4 nor 7 nor 11 are requested, no binaries are needed
+    if !pcrs.contains(Pcr::Pcr4) && !pcrs.contains(Pcr::Pcr7) && !pcrs.contains(Pcr::Pcr11) {
+        return Ok(PcrlockBinarySet {
+            uki_binaries: None,
+            shim_binaries: None,
+            systemd_boot_binaries: None,
+        });
     }
 
     // Determine esp path depending on the environment
@@ -358,14 +373,22 @@ pub fn get_binary_paths_pcrlock(
     // Construct UKI paths
     let uki_binaries = get_uki_paths(&esp_path, mount_path)?;
 
-    // If PCR 4 is requested, construct bootloader paths
-    let bootloader_binaries = if pcrs.contains(Pcr::Pcr4) {
-        get_bootloader_paths(&esp_path, mount_path, ctx)?
-    } else {
-        vec![]
+    // If PCR 4 or PCR 7 is requested, construct bootloader paths
+    let (shim_binaries, systemd_boot_binaries) =
+        if pcrs.contains(Pcr::Pcr4) || pcrs.contains(Pcr::Pcr7) {
+            get_bootloader_paths(&esp_path, mount_path, ctx)?
+        } else {
+            (vec![], vec![])
+        };
+
+    // Construct PcrlockBinarySet object
+    let pcrlock_binaries = PcrlockBinarySet {
+        uki_binaries: Some(uki_binaries),
+        shim_binaries: Some(shim_binaries),
+        systemd_boot_binaries: Some(systemd_boot_binaries),
     };
 
-    Ok((uki_binaries, bootloader_binaries))
+    Ok(pcrlock_binaries)
 }
 
 /// Returns paths of the UKI binaries for the current boot and if mount_path is provided, for the
@@ -414,8 +437,9 @@ fn get_bootloader_paths(
     esp_path: &Path,
     mount_path: Option<&Path>,
     ctx: &EngineContext,
-) -> Result<Vec<PathBuf>, Error> {
-    let mut bootloader_binaries: Vec<PathBuf> = Vec::new();
+) -> Result<(Vec<PathBuf>, Vec<PathBuf>), Error> {
+    let mut shim_binaries: Vec<PathBuf> = Vec::new();
+    let mut systemd_boot_binaries: Vec<PathBuf> = Vec::new();
 
     // If mount_path is null, this logic is called on rollback detection, when active volume is
     // still set to the old volume, so we need to determine the actual active volume
@@ -440,14 +464,14 @@ fn get_bootloader_paths(
         .join(&esp_dir_name)
         .join(BOOT_EFI);
     let shim_current = join_relative(esp_path, &shim_path);
-    bootloader_binaries.push(shim_current);
+    shim_binaries.push(shim_current);
 
     // Construct current secondary bootloader path, i.e. systemd-boot EFI executable
     let systemd_boot_path = Path::new(ESP_EFI_DIRECTORY)
         .join(&esp_dir_name)
         .join(GRUB_EFI);
     let systemd_boot_current = join_relative(esp_path, &systemd_boot_path);
-    bootloader_binaries.push(systemd_boot_current);
+    systemd_boot_binaries.push(systemd_boot_current);
 
     // If there is mount_path, we are currently staging a clean install or an A/B update, so also
     // construct update paths
@@ -456,18 +480,21 @@ fn get_bootloader_paths(
         // Primary bootloader, i.e. shim EFI executable, in update image
         let (_, shim_update_relative) = bootentries::get_label_and_path(ctx, BOOT_EFI)?;
         let shim_update = join_relative(esp_dir_path.clone(), shim_update_relative);
-        bootloader_binaries.push(shim_update);
+        shim_binaries.push(shim_update);
 
         // Secondary bootloader, i.e. systemd-boot EFI executable, in update image
         let (_, systemd_boot_update_relative) = bootentries::get_label_and_path(ctx, GRUB_EFI)?;
         let systemd_boot_update = join_relative(esp_dir_path, systemd_boot_update_relative);
-        bootloader_binaries.push(systemd_boot_update);
+        systemd_boot_binaries.push(systemd_boot_update);
     }
 
     debug!("Paths of bootloader binaries required for pcrlock encryption:");
-    for (i, path) in bootloader_binaries.iter().enumerate() {
-        debug!("Bootloader binary {}: {}", i + 1, path.display());
+    for (i, path) in shim_binaries.iter().enumerate() {
+        debug!("Shim binary {}: {}", i + 1, path.display());
+    }
+    for (i, path) in systemd_boot_binaries.iter().enumerate() {
+        debug!("Systemd-boot binary {}: {}", i + 1, path.display());
     }
 
-    Ok(bootloader_binaries)
+    Ok((shim_binaries, systemd_boot_binaries))
 }

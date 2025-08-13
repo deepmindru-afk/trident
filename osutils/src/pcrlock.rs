@@ -1,5 +1,6 @@
 use std::{
     fs,
+    io::{Cursor, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -7,10 +8,12 @@ use std::{
 use anyhow::{bail, Context, Error, Result};
 use enumflags2::BitFlags;
 use goblin::pe::PE;
+use hex;
 use log::{debug, error, trace, warn};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use tempfile::NamedTempFile;
+use uuid::Uuid;
 
 use sysdefs::tpm2::Pcr;
 use trident_api::{
@@ -91,15 +94,14 @@ struct PcrPolicy {
 /// Generates a new pcrlock policy for the given PCRs, UKI binaries, and bootloader binaries.
 pub fn generate_pcrlock_policy(
     pcrs: BitFlags<Pcr>,
-    uki_binaries: Vec<PathBuf>,
-    bootloader_binaries: Vec<PathBuf>,
+    pcrlock_binaries: PcrlockBinarySet,
 ) -> Result<(), TridentError> {
     debug!(
         "Generating a new pcrlock policy for the following PCRs: {:?}",
         pcrs.iter().map(|pcr| pcr.to_num()).collect::<Vec<_>>()
     );
     // Generate .pcrlock files for runtime OS image A
-    generate_pcrlock_files(pcrs, uki_binaries, bootloader_binaries)
+    generate_pcrlock_files(pcrs, pcrlock_binaries)
         .structured(ServicingError::GeneratePcrlockFiles)?;
 
     // Generate pcrlock policy; on A/B update, the existing binding will be automatically
@@ -565,16 +567,20 @@ impl LockCommand {
     }
 }
 
+pub struct PcrlockBinarySet {
+    pub uki_binaries: Option<Vec<PathBuf>>,
+    pub shim_binaries: Option<Vec<PathBuf>>,
+    pub systemd_boot_binaries: Option<Vec<PathBuf>>,
+}
+
 /// Generates dynamically defined .pcrlock files for either (1) the current boot only or (2) the
 /// current and the future boots. Calls the `systemd-pcrlock lock-*` commands to generate the
 /// .pcrlock files, as well as helpers to generate the remaining .pcrlock files.
 fn generate_pcrlock_files(
     // Bitflags representing the PCRs to generate .pcrlock files for,
     pcrs: BitFlags<Pcr>,
-    // Vector containing paths of UKI binaries to measure via lock-uki,
-    uki_binaries: Vec<PathBuf>,
-    // Vector containing paths of bootloader binaries to be measured by Trident,
-    bootloader_binaries: Vec<PathBuf>,
+    // Binaries grouped into one struct
+    pcrlock_binaries: PcrlockBinarySet,
 ) -> Result<(), Error> {
     debug!(
         "Generating .pcrlock files for the following PCRs: {:?}",
@@ -609,7 +615,14 @@ fn generate_pcrlock_files(
 
     // Run 'lock-uki' when PCRs 4/11 are requested
     if !(pcrs & (Pcr::Pcr4 | Pcr::Pcr11)).is_empty() {
-        for (index, uki_path) in uki_binaries.clone().into_iter().enumerate() {
+        for (index, uki_path) in pcrlock_binaries
+            .uki_binaries
+            .as_ref()
+            .unwrap_or(&Vec::new())
+            .clone()
+            .into_iter()
+            .enumerate()
+        {
             let pcrlock_file = generate_pcrlock_output_path(UKI_PCRLOCK_DIR, index);
             let cmd = LockCommand::Uki {
                 path: uki_path.clone(),
@@ -632,6 +645,22 @@ fn generate_pcrlock_files(
     } else {
         debug!("Skipping running 'systemd-pcrlock lock-uki' as PCRs 4 and 11 are not requested");
     }
+
+    // Merge shim binaries and systemd-boot binaries into a single vector
+    let bootloader_binaries = pcrlock_binaries
+        .shim_binaries
+        .as_ref()
+        .unwrap_or(&Vec::new())
+        .clone()
+        .into_iter()
+        .chain(
+            pcrlock_binaries
+                .systemd_boot_binaries
+                .as_ref()
+                .unwrap_or(&Vec::new())
+                .clone(),
+        )
+        .collect::<Vec<_>>();
 
     // Generate .pcrlock files when PCR 4 is requested
     if pcrs.contains(Pcr::Pcr4) {
@@ -677,17 +706,24 @@ fn generate_pcrlock_files(
                 bootloader_path.display()
             ))?;
         }
-        // If SecureBoot is disabled, the authenticode of the .linux section of each UKI binary is
-        // measured into PCR 4 as well.
+
+        // If SecureBoot is disabled, measure the .linux section of each UKI binary into PCR 4 as well.
         if !efivar::secure_boot_is_enabled() {
-            for (index, uki_path) in uki_binaries.into_iter().enumerate() {
+            for (index, uki_path) in pcrlock_binaries
+                .uki_binaries
+                .as_ref()
+                .unwrap_or(&Vec::new())
+                .clone()
+                .into_iter()
+                .enumerate()
+            {
                 let pcrlock_file =
                     generate_pcrlock_output_path(BOOT_LOADER_CODE_UKI_PCRLOCK_DIR, index);
                 debug!(
                     "SecureBoot is disabled, so generating .pcrlock file at '{}' \
                     to record measurement of .linux section of UKI PE binary at '{}' into PCR 4",
-                    pcrlock_file.clone().display(),
-                    uki_path.clone().display()
+                    pcrlock_file.display(),
+                    uki_path.display()
                 );
                 generate_linux_authenticode(uki_path.clone(), pcrlock_file.clone()).context(
                     format!(
@@ -705,25 +741,35 @@ fn generate_pcrlock_files(
 
     // Generate .pcrlock files if PCR 7 is requested
     if pcrs.contains(Pcr::Pcr7) {
-        // If SecureBoot is disabled, then SbatLevel efi var is measured
+        // If SecureBoot is disabled, then SbatLevel is measured
         if !efivar::secure_boot_is_enabled() {
-            let pcrlock_file = generate_pcrlock_output_path(SECURE_BOOT_POLICY_PCRLOCK_DIR, 0);
-            debug!(
-                "SecureBoot is disabled, so generating .pcrlock file at '{}' \
-                    to record measurement of SbatLevel EFI variable into PCR 7",
-                pcrlock_file.clone().display(),
-            );
-            generate_sbat_level_pcrlock(pcrlock_file.clone()).context(format!(
-                "Failed to generate .pcrlock file at '{}' \
-                to record measurement of SbatLevel EFI variable into PCR 7",
-                pcrlock_file.display()
-            ))?;
+            for (index, shim_path) in pcrlock_binaries
+                .shim_binaries
+                .as_ref()
+                .unwrap_or(&Vec::new())
+                .clone()
+                .into_iter()
+                .enumerate()
+            {
+                let pcrlock_file =
+                    generate_pcrlock_output_path(SECURE_BOOT_POLICY_PCRLOCK_DIR, index);
+                debug!(
+                    "SecureBoot is disabled, so generating .pcrlock file at '{}' \
+                        to record measurement of SbatLevel EFI variable into PCR 7",
+                    pcrlock_file.display(),
+                );
+                generate_sbat_level_pcrlock(shim_path.clone(), pcrlock_file.clone()).context(
+                    format!(
+                        "Failed to generate .pcrlock file at '{}' \
+                        to record measurement of SbatLevel EFI variable into PCR 7",
+                        pcrlock_file.display()
+                    ),
+                )?;
+            }
         }
     }
 
-    // Parse the 'systemd-pcrlock log' output to validate that every log entry has been matched to
-    // a recognized boot component for all required PCRs, i.e. that all necessary .pcrlock files
-    // have been added or generated
+    // Validate PCR lock log
     validate_log(pcrs).context(
         "Failed to validate pcrlock log to confirm all required .pcrlock files have been generated",
     )?;
@@ -874,26 +920,87 @@ fn generate_linux_authenticode(uki_path: PathBuf, pcrlock_file: PathBuf) -> Resu
     Ok(())
 }
 
-/// If `SecureBoot` is disabled, generates .pcrlock file under
-/// /var/lib/pcrlock.d/230-secure-boot-policy.pcrlock.d, where Trident measures SBAT_VAR_ORIGINAL,
-/// as recorded into PCR 7.
-fn generate_sbat_level_pcrlock(pcrlock_file: PathBuf) -> Result<()> {
-    // Fixed original SBAT string from shim fallback
+fn generate_sbat_level_pcrlock(shim_path: PathBuf, pcrlock_file: PathBuf) -> Result<()> {
     const SBAT_VAR_ORIGINAL: &[u8] = b"sbat,1,2021030218\n";
+    // Read the binary
+    let data = fs::read(&shim_path)
+        .with_context(|| format!("Failed to read shim binary at {}", shim_path.display()))?;
 
-    // Parse the SBAT GUID once
-    let guid = uuid::Uuid::parse_str(SHIM_LOCK_GUID).context("Failed to parse SBAT policy GUID")?;
+    // Parse with goblin::pe::PE
+    let pe = PE::parse(&data).context("Failed to parse shim binary as PE")?;
+
+    // Locate .sbatlevel section
+    let mut sbat_bytes_opt: Option<Vec<u8>> = None;
+    for section in &pe.sections {
+        let name = section.name().unwrap_or_default();
+        if name == ".sbatlevel" {
+            let start = section.pointer_to_raw_data as usize;
+            let size = section.size_of_raw_data as usize;
+            let end = start
+                .checked_add(size)
+                .ok_or_else(|| anyhow::anyhow!("Invalid .sbatlevel size"))?;
+            sbat_bytes_opt = Some(data[start..end].to_vec());
+            break;
+        }
+    }
+
+    let sbat_value: Vec<u8> = if let Some(section_data) = sbat_bytes_opt {
+        // === Python logic: parse .sbatlevel structure ===
+        let mut cursor = Cursor::new(section_data);
+
+        // magic
+        let mut buf4 = [0u8; 4];
+        cursor.read_exact(&mut buf4)?;
+        let magic = u32::from_le_bytes(buf4);
+        if magic != 0 {
+            // Use fallback if magic is wrong
+            debug!("Invalid .sbatlevel magic: {}, using fallback", magic);
+            SBAT_VAR_ORIGINAL.to_vec()
+        } else {
+            // Read off_t_prev and off_t_latest
+            cursor.read_exact(&mut buf4)?;
+            let off_prev = u32::from_le_bytes(buf4);
+            cursor.read_exact(&mut buf4)?;
+            let _off_latest = u32::from_le_bytes(buf4);
+
+            // Seek to off_prev + 4
+            cursor.seek(SeekFrom::Start(off_prev as u64 + 4))?;
+
+            // Read to end
+            let mut rest = Vec::new();
+            cursor.read_to_end(&mut rest)?;
+
+            // Truncate at first null byte if present
+            if let Some(pos) = rest.iter().position(|&b| b == 0) {
+                rest.truncate(pos);
+            }
+            if rest.is_empty() {
+                debug!("Empty .sbatlevel section, using fallback");
+                SBAT_VAR_ORIGINAL.to_vec()
+            } else {
+                rest
+            }
+        }
+    } else {
+        // Section missing -> fallback
+        debug!("Missing .sbatlevel section, using fallback");
+        SBAT_VAR_ORIGINAL.to_vec()
+    };
+
+    // GUID + label + sbat_value hashing (event_hash equivalent)
+    let guid = Uuid::parse_str(SHIM_LOCK_GUID).context("Failed to parse SHIM lock GUID")?;
     let guid_bytes = guid.as_bytes();
     let label_bytes = SBAT_LEVEL.as_bytes();
 
-    // Hash GUID + label + fallback SBAT string
+    // Shim's event_hash packs GUID + len(name) + len(value) + UTF-16LE(name) + raw(value)
+    // If you want literal PCR hash, you might also need to follow event_hash encoding exactly.
     let mut hasher = Sha256::new();
     hasher.update(guid_bytes);
     hasher.update(label_bytes);
-    hasher.update(SBAT_VAR_ORIGINAL);
+    hasher.update(&sbat_value);
+
     let digest = hasher.finalize();
 
-    // Create digest entries for the PCR lock file
     let digests = vec![DigestEntry {
         hash_alg: "sha256",
         digest: hex::encode(digest),
@@ -906,22 +1013,16 @@ fn generate_sbat_level_pcrlock(pcrlock_file: PathBuf) -> Result<()> {
         }],
     };
 
+    // Write out .pcrlock
     if let Some(parent) = pcrlock_file.parent() {
         fs::create_dir_all(parent).context(format!(
-            "Failed to create directory for .pcrlock file at '{}'",
+            "Failed to create dir for {}",
             pcrlock_file.display()
         ))?;
     }
-
-    let json = serde_json::to_string(&pcrlock).context(format!(
-        "Failed to serialize .pcrlock file '{}' as JSON",
-        pcrlock_file.display()
-    ))?;
-
-    fs::write(&pcrlock_file, json.clone()).context(format!(
-        "Failed to write .pcrlock file at '{}'",
-        pcrlock_file.display()
-    ))?;
+    let json = serde_json::to_string(&pcrlock)?;
+    fs::write(&pcrlock_file, &json)
+        .context(format!("Failed to write {}", pcrlock_file.display()))?;
 
     trace!(
         "Contents of .pcrlock file at '{}':\n{}",

@@ -4,8 +4,9 @@ use anyhow::{Context, Error};
 use enumflags2::BitFlags;
 use log::{debug, info, trace, warn};
 
-use osutils::{block_devices, efivar, lsblk, pcrlock, veritysetup, virt};
-use sysdefs::tpm2::Pcr;
+use osutils::{
+    block_devices, efivar, encryption as osutils_encryption, lsblk, pcrlock, veritysetup, virt,
+};
 use trident_api::{
     constants::internal_params::{OVERRIDE_PCRLOCK_ENCRYPTION, VIRTDEPLOY_BOOT_ORDER_WORKAROUND},
     error::{InternalError, ReportError, ServicingError, TridentError, TridentResultExt},
@@ -100,25 +101,16 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<(), TridentError> {
                         .iter()
                         .fold(BitFlags::empty(), |acc, &pcr| acc | BitFlags::from(pcr))
                 } else {
-                    // TODO: Currently, we cannot seal to PCR 7 b/c not all measurements are
-                    // recognized by the .pcrlock file generation logic. Once that is resolved,
-                    // we want to have PCR 7 as the default. For now, we use PCRs 4 and 11. Related
-                    // ADO tasks:
-                    // https://dev.azure.com/mariner-org/polar/_workitems/edit/14523/ and
-                    // https://dev.azure.com/mariner-org/polar/_workitems/edit/14455/.
-                    //
                     // Use default PCR 7 if none specified.
-                    //BitFlags::from(DEFAULT_PCR)
-                    BitFlags::from(Pcr::Pcr4) | BitFlags::from(Pcr::Pcr11)
+                    BitFlags::from(osutils_encryption::DEFAULT_PCR)
                 };
 
                 // Get UKI and bootloader binaries for .pcrlock file generation
-                let (uki_binaries, bootloader_binaries) =
-                    encryption::get_binary_paths_pcrlock(&ctx, pcrs, None)
-                        .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
+                let pcrlock_binaries = encryption::get_binary_paths_pcrlock(&ctx, pcrs, None)
+                    .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
 
                 // Generate a pcrlock policy
-                pcrlock::generate_pcrlock_policy(pcrs, uki_binaries, bootloader_binaries)?;
+                pcrlock::generate_pcrlock_policy(pcrs, pcrlock_binaries)?;
             } else {
                 warn!(
                     "Skipping pcrlock policy re-generation on boot validation \

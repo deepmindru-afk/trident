@@ -217,12 +217,12 @@ pub fn provision(ctx: &EngineContext, mount_path: &Path) -> Result<(), TridentEr
                 pcrs.iter().map(|pcr| pcr.to_num()).collect::<Vec<_>>()
             );
             // Get UKI and bootloader binaries for .pcrlock file generation
-            let (uki_binaries, bootloader_binaries) =
+            let pcrlock_binaries =
                 engine_encryption::get_binary_paths_pcrlock(ctx, pcrs, Some(mount_path))
                     .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
 
             // Re-generate pcrlock policy
-            pcrlock::generate_pcrlock_policy(pcrs, uki_binaries, bootloader_binaries)?;
+            pcrlock::generate_pcrlock_policy(pcrs, pcrlock_binaries)?;
         }
 
         // If a pcrlock policy JSON file exists, copy it to the update volume
