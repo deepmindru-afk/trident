@@ -175,6 +175,21 @@ pub enum Commands {
         #[arg(long, conflicts_with = "hs_path")]
         history_path: Option<PathBuf>,
     },
+
+    /// Install sysexts
+    Merge {
+        /// The new configuration to apply
+        #[clap(index = 1, default_value = "/etc/trident/config.yaml")]
+        config: PathBuf,
+
+        /// Path to save the resulting Host Status
+        #[clap(short, long)]
+        status: Option<PathBuf>,
+
+        /// Path to save an eventual fatal error
+        #[clap(short, long)]
+        error: Option<PathBuf>,
+    },
 }
 
 impl Commands {
@@ -191,6 +206,7 @@ impl Commands {
             #[cfg(feature = "pytest-generator")]
             Commands::Pytest => "pytest",
             Commands::OfflineInitialize { .. } => "offline-initialize",
+            Commands::Merge { .. } => "merge",
         }
     }
 }

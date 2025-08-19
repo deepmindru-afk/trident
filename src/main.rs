@@ -95,11 +95,12 @@ fn run_trident(
             | Commands::Update { status, error, .. }
             | Commands::Commit { status, error }
             | Commands::Listen { status, error }
-            | Commands::RebuildRaid { status, error, .. } => {
+            | Commands::RebuildRaid { status, error, .. }
+            | Commands::Merge { status, error, .. } => {
                 let config_path = match &args.command {
-                    Commands::Update { config, .. } | Commands::Install { config, .. } => {
-                        Some(config.clone())
-                    }
+                    Commands::Update { config, .. }
+                    | Commands::Install { config, .. }
+                    | Commands::Merge { config, .. } => Some(config.clone()),
                     Commands::RebuildRaid { config, .. } => config.clone(),
                     _ => None,
                 };
@@ -168,6 +169,9 @@ fn run_trident(
                     Commands::RebuildRaid { .. } => trident
                         .rebuild_raid(&mut datastore)
                         .map(|()| ExitKind::Done),
+                    Commands::Merge { .. } => {
+                        trident.merge(&mut datastore).map(|()| ExitKind::Done)
+                    }
                     _ => Err(TridentError::internal("Invalid command")),
                 };
 

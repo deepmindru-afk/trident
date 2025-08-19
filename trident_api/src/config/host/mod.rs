@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "schemars")]
 use schemars::JsonSchema;
+use sysext::Sysext;
 
 use crate::{
     constants::internal_params::SELF_UPGRADE_TRIDENT, is_default,
@@ -16,6 +17,7 @@ pub(crate) mod internal_params;
 pub(crate) mod os;
 pub(crate) mod scripts;
 pub(crate) mod storage;
+pub(crate) mod sysext;
 pub(crate) mod trident;
 
 use error::HostConfigurationStaticValidationError;
@@ -66,6 +68,10 @@ pub struct HostConfiguration {
     /// integrity information.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<OsImage>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "schemars", schemars(skip))]
+    pub sysexts: Vec<Sysext>,
 }
 
 impl HostConfiguration {

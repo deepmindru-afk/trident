@@ -41,6 +41,7 @@ mod kexec;
 mod newroot;
 pub mod provisioning_network;
 pub mod rollback;
+mod sysext;
 mod update;
 
 // Trident Subsystems
@@ -54,6 +55,7 @@ pub(crate) mod install_index;
 pub(crate) use clean_install::{clean_install, finalize_clean_install};
 pub(crate) use context::{filesystem, EngineContext};
 pub use newroot::NewrootMount;
+pub(crate) use sysext::install_sysexts;
 pub(crate) use update::{finalize_update, update};
 
 pub(crate) trait Subsystem: Send {

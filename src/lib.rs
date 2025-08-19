@@ -456,6 +456,23 @@ impl Trident {
         )
     }
 
+    pub fn merge(&mut self, _datastore: &mut DataStore) -> Result<(), TridentError> {
+        let host_config = self
+            .host_config
+            .clone()
+            .structured(InternalError::Internal(
+                "install called without host configuration set",
+            ))?;
+
+        if host_config.sysexts.is_empty() {
+            return Ok(());
+        }
+        engine::install_sysexts(&host_config)
+            .structured(InternalError::Internal("Failed to install sysext"))?;
+
+        Ok(())
+    }
+
     pub fn install(
         &mut self,
         datastore: &mut DataStore,
