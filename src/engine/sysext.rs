@@ -26,7 +26,7 @@ pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
         .arg("list")
         .arg("--json=pretty")
         .output_and_check()
-        .context("Failed to run `systemd-sysext list --json=pretty")?;
+        .context("Failed to run `systemd-sysext list --json=pretty`")?;
     let parsed: Vec<Extension> =
         serde_json::from_str(&output_json).context("Failed to parse systemd-sysext list output")?;
     debug!("Found existing extensions: {:?}", parsed);
