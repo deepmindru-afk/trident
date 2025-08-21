@@ -59,9 +59,9 @@ pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
 
         // Call systemd-sysext
         Command::new("systemd-sysext")
-            .arg("merge")
+            .arg("refresh")
             .run_and_check()
-            .context("Failed to run `systemd-sysext merge`")?;
+            .context("Failed to run `systemd-sysext refresh`")?;
     }
     Ok(())
 }
