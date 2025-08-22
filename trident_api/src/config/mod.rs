@@ -25,6 +25,7 @@ pub use host::{
         verity::{VerityCorruptionOption, VerityDevice},
         Storage,
     },
+    sysext::Sysext,
     trident::Trident,
     HostConfiguration,
 };
