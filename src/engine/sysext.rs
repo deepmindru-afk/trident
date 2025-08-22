@@ -137,7 +137,7 @@ pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
         let sysext_new_path = Path::new("/var/lib/extensions").join(format!("{sysext_name}.raw"));
         debug!("New sysext path is: {}", sysext_new_path.display());
         fs::create_dir_all("/var/lib/extensions").context("Failed to create dirs")?;
-        fs::rename(&current_file_path, &sysext_new_path).context(format!(
+        fs::copy(&current_file_path, &sysext_new_path).context(format!(
             "Failed to rename from {:?} to {}",
             current_file_path,
             sysext_new_path.display()
