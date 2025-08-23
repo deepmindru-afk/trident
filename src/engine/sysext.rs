@@ -1,5 +1,6 @@
 use std::{
-    fs,
+    fs::{self},
+    io,
     path::{Path, PathBuf},
     process::Command,
     str::FromStr,
@@ -12,125 +13,232 @@ use serde::{Deserialize, Serialize};
 
 use osutils::{dependencies::Dependency, exe::RunAndCheck};
 use trident_api::config::{HostConfiguration, Sysext};
+use url::Url;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 struct Extension {
+    id: Option<String>,
+    sysext_id: Option<String>,
+    sysext_version_id: Option<String>,
+    sysext_scope: Option<String>,
+    architecture: Option<String>,
     name: String,
-    #[serde(rename = "type")]
-    ext_type: String,
-    path: String,
-    time: u64,
 }
 
-pub fn get_extension_release(img_path: &PathBuf, name: &String) -> Result<OsRelease, Error> {
+fn get_extension_release_from_new_sysext(img_path: &PathBuf) -> Result<Extension, Error> {
     let mount_point = "/mnt/tmp";
-    let release_path = Path::new(mount_point).join(format!(
-        "usr/lib/extension-release.d/extension-release.{name}"
-    ));
-    Dependency::Losetup
+    fs::create_dir_all(mount_point)
+        .context(format!("Failed to create directory at '{mount_point}'"))?;
+    let release_dir = Path::new(mount_point).join("usr/lib/extension-release.d/");
+    let loop_device_output = Dependency::Losetup
         .cmd()
         .arg("-f")
         .arg("--show")
         .arg(img_path)
-        .run_and_check()
+        .output_and_check()
         .with_context(|| "Failed to setup loop device")?;
+    let loop_device = loop_device_output.trim();
+    debug!("Created loop device: {}", loop_device);
     Dependency::Mount
         .cmd()
-        .arg(img_path)
+        .arg("-t")
+        .arg("ddi")
+        .arg(loop_device)
         .arg(mount_point)
         .run_and_check()
-        .with_context(|| "Failed to mount sysext")?;
+        .with_context(|| {
+            format!("Failed to mount loop device '{loop_device}' at '{mount_point}'")
+        })?;
+    debug!("Successfully mounted loop device '{loop_device}' at '{mount_point}'");
 
     // Get extension release file
-    let extension_release_file_content = fs::read_to_string(release_path)
-        .with_context(|| "Failed to read extension-release file content")?;
+    let extension_release = get_extension_release(release_dir)?;
+
+    Dependency::Umount
+        .cmd()
+        .arg(mount_point)
+        .run_and_check()
+        .context("Failed to unmount")?;
+    Dependency::Losetup
+        .cmd()
+        .arg("-d")
+        .arg(loop_device)
+        .run_and_check()
+        .context("Failed to detach loop device")?;
+
+    debug!("Returning extension_release: {extension_release:?}");
+
+    Ok(extension_release)
+}
+
+fn get_extension_release(directory: PathBuf) -> Result<Extension, Error> {
+    // Get extension release file
+    debug!(
+        "Attempting to read from directory '{}'",
+        directory.display()
+    );
+    let files = fs::read_dir(&directory)?
+        .map(|res| res.map(|e| e.path()))
+        .collect::<Result<Vec<_>, io::Error>>()?;
+
+    // If no name was passed to this function, we expect only one file to be present in the directory
+    let path = &files[0];
+    debug!("Evaluating path: '{}'", path.display());
+    // Find the file whose `SYSEXT_ID` matches `name` parameter
+    let extension_release_file_content = fs::read_to_string(path).context(format!(
+        "Failed to read extension-release file content from '{}'",
+        &path.display()
+    ))?;
     debug!("Found extension release file content:\n {extension_release_file_content}");
-    OsRelease::from_str(&extension_release_file_content)
-        .with_context(|| "Failed to convert extension release file content to OsRelease object")
+    let extension_release_obj = OsRelease::from_str(&extension_release_file_content)
+        .with_context(|| "Failed to convert extension release file content to OsRelease object")?;
+    let file_name = path
+        .display()
+        .to_string()
+        .split("extension-release.")
+        .last()
+        .ok_or_else(|| Error::msg("Failed to get extension-release ending"))?
+        .to_string();
+    Ok(Extension {
+        id: extension_release_obj.get_value("ID").map(|s| s.to_string()),
+        sysext_id: extension_release_obj
+            .get_value("SYSEXT_ID")
+            .map(|s| s.to_string()),
+        sysext_version_id: extension_release_obj
+            .get_value("SYSEXT_VERSION_ID")
+            .map(|s| s.to_string()),
+        sysext_scope: extension_release_obj
+            .get_value("SYSEXT_SCOPE")
+            .map(|s| s.to_string()),
+        architecture: extension_release_obj
+            .get_value("ARCHITECTURE")
+            .map(|s| s.to_string()),
+        name: file_name,
+    })
 }
 
 fn find_existing_sysext(
-    name: &String,
+    new: Extension,
     existing: &Vec<Extension>,
-) -> Result<Option<OsRelease>, Error> {
+) -> Result<Option<Extension>, Error> {
     // All sysexts are required to have extension-release.<name> file. All merged sysexts will have
     // contents in /usr/lib/extension-release.d/
     for ext in existing {
-        if ext.name == *name {
-            let existing_extension_release_content = fs::read_to_string(format!(
-                "usr/lib/extension-release.d/extension-release.{}",
-                ext.name
-            ))
-            .with_context(|| {
-                format!(
-                    "Failed to read file from 'usr/lib/extension-release.d/extension-release.{}'",
-                    ext.name
-                )
-            })?;
-            let existing_ext_release = OsRelease::from_str(&existing_extension_release_content)
-                .context("Failed to convert string to OsRelease object")?;
-            return Ok(Some(existing_ext_release));
+        debug!(
+            "Comparing existing '{:?}' with new '{:?}'",
+            ext.sysext_id, new.sysext_id
+        );
+
+        if ext.sysext_id == new.sysext_id {
+            debug!("Found a matching sysext on the OS");
+            return Ok(Some(ext.clone()));
         }
     }
+    debug!("Did not find any matching sysext on the OS");
     Ok(None)
 }
 
 fn get_list_of_sysexts_to_merge(
     new: &Vec<Sysext>,
     existing: &Vec<Extension>,
-) -> Result<Vec<Sysext>, Error> {
+) -> Result<Vec<(String, Url)>, Error> {
     let mut to_merge = Vec::new();
     for sysext in new {
-        let sysext_name = &sysext.name;
-        debug!("Sysext name is: {}", sysext_name);
+        // Get new sysext's information
+        let current_file_path = sysext.url.to_file_path().unwrap_or_default();
+        let new_extension = get_extension_release_from_new_sysext(&current_file_path)
+            .with_context(|| "Failed to get extension release file")?;
+        debug!(
+            "Found sysext version ID: {:?}",
+            new_extension.sysext_version_id
+        );
+        debug!("Sysext name is: {}", new_extension.name);
 
-        if let Ok(Some(existing_ext_release)) = find_existing_sysext(&sysext.name, existing) {
-            // Get sysext version
-            let current_file_path = sysext.url.to_file_path().unwrap_or_default();
-            let new_extension_release = get_extension_release(&current_file_path, sysext_name)
-                .with_context(|| "Failed to get extension release file")?;
-            let sysext_version = OsRelease::get_value(&new_extension_release, "SYSEXT_VERSION_ID")
-                .context("Failed to retrieve key 'SYSEXT_VERSION_ID'")?;
-            debug!("Found sysext version ID: {sysext_version}");
-
-            let existing_sysext_version = OsRelease::get_value(
-            &existing_ext_release,
-            "SYSEXT_VERSION_ID",
-        )
-        .context(
-            "Failed to retrieve key 'SYSEXT_VERSION_ID' from existing sysext's ext release file",
-        )?;
-            if existing_sysext_version != sysext_version {
-                to_merge.push(sysext.clone());
+        if let Ok(Some(existing_ext_release)) =
+            find_existing_sysext(new_extension.clone(), existing)
+        {
+            debug!(
+                "Found an existing sysext on the OS with the same SYSEXT_ID: '{:?}'",
+                new_extension.sysext_id
+            );
+            if existing_ext_release.sysext_version_id != new_extension.sysext_version_id {
+                debug!("SYSEXT_VERSION_ID does not match. Merging new version.");
+                to_merge.push((new_extension.name, sysext.url.clone()));
             }
+        } else {
+            // If there are no existing sysexts that match this new one, merge the new one
+            debug!(
+                "Did not find any exisiting sysexts with SYSEXT_ID: {:?}",
+                new_extension.sysext_id
+            );
+            to_merge.push((new_extension.name, sysext.url.clone()));
         }
-        // If there are no existing sysexts that match this new one, merge the new one
-        to_merge.push(sysext.clone());
     }
     Ok(to_merge)
 }
 
+fn get_existing_sysexts() -> Result<Vec<Extension>, Error> {
+    let mut ret = Vec::new();
+    let extension_release_dir = Path::new("/usr/lib/extension-release.d/");
+    if !extension_release_dir.exists() {
+        return Ok(ret);
+    }
+    let files = fs::read_dir(extension_release_dir)?
+        .map(|res| res.map(|e| e.path()))
+        .collect::<Result<Vec<_>, io::Error>>()?;
+    for path in &files {
+        debug!("Evaluating path: '{}'", path.display());
+        let extension_release_file_content = fs::read_to_string(path).context(format!(
+            "Failed to read extension-release file content from '{}'",
+            &path.display()
+        ))?;
+        let extension_release_obj = OsRelease::from_str(&extension_release_file_content)
+            .with_context(|| {
+                "Failed to convert extension release file content to OsRelease object"
+            })?;
+
+        let name = path
+            .display()
+            .to_string()
+            .split("extension-release.")
+            .last()
+            .context("Could not find name")?
+            .to_string();
+
+        ret.push(Extension {
+            id: extension_release_obj.get_value("ID").map(|s| s.to_string()),
+            sysext_id: extension_release_obj
+                .get_value("SYSEXT_ID")
+                .map(|s| s.to_string()),
+            sysext_scope: extension_release_obj
+                .get_value("SYSEXT_SCOPE")
+                .map(|s| s.to_string()),
+            sysext_version_id: extension_release_obj
+                .get_value("SYSEXT_VERSION_ID")
+                .map(|s| s.to_string()),
+            architecture: extension_release_obj
+                .get_value("ARCHITECTURE")
+                .map(|s| s.to_string()),
+            name,
+        });
+    }
+    Ok(ret)
+}
+
 pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
     // Discover existing sysexts
-    let output_json = Command::new("systemd-sysext")
-        .arg("list")
-        .arg("--json=pretty")
-        .output_and_check()
-        .context("Failed to run `systemd-sysext list --json=pretty`")?;
-    let parsed: Vec<Extension> =
-        serde_json::from_str(&output_json).context("Failed to parse systemd-sysext list output")?;
-    debug!("Found existing extensions: {:?}", parsed);
+    let existing = get_existing_sysexts().context("Failed to get existing sysexts on OS")?;
+    debug!("Found existing extensions: {:?}", existing);
 
-    let sysexts_to_merge = get_list_of_sysexts_to_merge(&host_config.sysexts, &parsed)
+    let sysexts_to_merge = get_list_of_sysexts_to_merge(&host_config.sysexts, &existing)
         .with_context(|| "Failed to get list of sysexts to merge")?;
     debug!("Merging the following extensions: {:?}", sysexts_to_merge);
 
     // Merge new sysexts
-    for sysext in sysexts_to_merge {
-        let sysext_name = &sysext.name;
+    for (sysext_name, url) in sysexts_to_merge {
         debug!("Preparing to merge: {}", sysext_name);
 
-        let current_file_path = sysext.url.to_file_path().unwrap_or_default();
+        let current_file_path = url.to_file_path().unwrap_or_default();
 
         // Place sysext in /var/lib/extensions. Sysexts may be stored in /etc/extensions,
         // /run/extensions, and /var/lib/extensions.
