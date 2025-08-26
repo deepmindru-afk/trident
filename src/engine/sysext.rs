@@ -15,6 +15,8 @@ use url::Url;
 use osutils::{dependencies::Dependency, exe::RunAndCheck};
 use trident_api::config::{HostConfiguration, Sysexts};
 
+const CACHE_PATH: &str = "/var/cache/trident-sysext/cache.json";
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 struct Extension {
     id: Option<String>,
@@ -291,6 +293,17 @@ fn get_existing_sysexts() -> Result<Vec<Extension>, Error> {
     Ok(ret)
 }
 
+// Store cached information about sysexts on system inside /var/cache/trident-sysext/cache.json
+fn write_to_cache() -> Result<(), Error> {
+    let sysexts = get_existing_sysexts().context("Failed to get exisiting sysexts")?;
+    let sysexts_json = serde_json::to_string(&sysexts)
+        .context("Failed to convert sysexts vec into a json string")?;
+    fs::create_dir_all("/var/cache/trident-sysext")
+        .context("Failed to create dirs '/var/cache/trident-sysext'")?;
+    fs::write(CACHE_PATH, sysexts_json.as_bytes()).context("Failed to write json to cache")?;
+    Ok(())
+}
+
 pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
     let Some(sysexts) = &host_config.sysexts else {
         debug!("Received no sysexts in Host Config. Returning.");
@@ -298,11 +311,18 @@ pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
     };
 
     // Discover existing sysexts
-    let existing = get_existing_sysexts().context("Failed to get existing sysexts on OS")?;
+    if !Path::new(CACHE_PATH).exists() {
+        // Create cache to store state of sysexts before Trident begins operations
+        write_to_cache()?;
+    }
+    let cache_contents = fs::read_to_string(CACHE_PATH).context("Failed to read from cache")?;
+    let existing =
+        serde_json::from_str(&cache_contents).context("Failed to convert cache contents to vec")?;
+
     debug!("Found existing extensions: {:?}", existing);
 
     let (sysexts_to_merge, sysexts_to_unmerge) =
-        get_list_of_sysexts_to_merge_and_unmerge(&sysexts, &existing)
+        get_list_of_sysexts_to_merge_and_unmerge(sysexts, &existing)
             .with_context(|| "Failed to get list of sysexts to merge")?;
     debug!("Merging the following extensions: {:?}", sysexts_to_merge);
 
@@ -342,5 +362,9 @@ pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
         .arg("refresh")
         .run_and_check()
         .context("Failed to run `systemd-sysext refresh`")?;
+
+    debug!("Writing to cache");
+    write_to_cache()?;
+
     Ok(())
 }
