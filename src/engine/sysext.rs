@@ -8,12 +8,12 @@ use std::{
 
 use anyhow::{Context, Error};
 use etc_os_release::OsRelease;
-use log::debug;
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use osutils::{dependencies::Dependency, exe::RunAndCheck};
-use trident_api::config::{HostConfiguration, Sysext};
-use url::Url;
+use trident_api::config::{HostConfiguration, Sysexts};
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 struct Extension {
@@ -22,7 +22,17 @@ struct Extension {
     sysext_version_id: Option<String>,
     sysext_scope: Option<String>,
     architecture: Option<String>,
+    path: Option<String>,
     name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ExtensionListObj {
+    name: String,
+    #[serde(rename = "type")]
+    ext_type: String,
+    path: String,
+    time: u64,
 }
 
 fn get_extension_release_from_new_sysext(img_path: &PathBuf) -> Result<Extension, Error> {
@@ -113,6 +123,7 @@ fn get_extension_release(directory: PathBuf) -> Result<Extension, Error> {
         architecture: extension_release_obj
             .get_value("ARCHITECTURE")
             .map(|s| s.to_string()),
+        path: None,
         name: file_name,
     })
 }
@@ -138,12 +149,18 @@ fn find_existing_sysext(
     Ok(None)
 }
 
-fn get_list_of_sysexts_to_merge(
-    new: &Vec<Sysext>,
+fn get_list_of_sysexts_to_merge_and_unmerge(
+    host_config_sysexts: &Sysexts,
     existing: &Vec<Extension>,
-) -> Result<Vec<(String, Url)>, Error> {
+) -> Result<(Vec<(String, Url)>, Vec<Extension>), Error> {
+    let to_add = &host_config_sysexts.add;
+    let to_remove = &host_config_sysexts.remove;
+
     let mut to_merge = Vec::new();
-    for sysext in new {
+    let mut to_unmerge = Vec::new();
+
+    // Check all the sysexts we wish to add against existing sysexts
+    for sysext in to_add {
         // Get new sysext's information
         let current_file_path = sysext.url.to_file_path().unwrap_or_default();
         let new_extension = get_extension_release_from_new_sysext(&current_file_path)
@@ -164,6 +181,7 @@ fn get_list_of_sysexts_to_merge(
             if existing_ext_release.sysext_version_id != new_extension.sysext_version_id {
                 debug!("SYSEXT_VERSION_ID does not match. Merging new version.");
                 to_merge.push((new_extension.name, sysext.url.clone()));
+                to_unmerge.push(existing_ext_release)
             }
         } else {
             // If there are no existing sysexts that match this new one, merge the new one
@@ -174,7 +192,36 @@ fn get_list_of_sysexts_to_merge(
             to_merge.push((new_extension.name, sysext.url.clone()));
         }
     }
-    Ok(to_merge)
+
+    // Check the sysexts we wish to remove against existing sysexts
+    for sysext in to_remove {
+        // Get new sysext's information
+        let current_file_path = sysext.url.to_file_path().unwrap_or_default();
+        let new_extension = get_extension_release_from_new_sysext(&current_file_path)
+            .with_context(|| "Failed to get extension release file")?;
+        debug!(
+            "Found sysext version ID: {:?}",
+            new_extension.sysext_version_id
+        );
+        debug!("Sysext name is: {}", new_extension.name);
+
+        if let Ok(Some(existing_ext_release)) =
+            find_existing_sysext(new_extension.clone(), existing)
+        {
+            debug!(
+                "Found an existing sysext on the OS with the same SYSEXT_ID: '{:?}'",
+                new_extension.sysext_id
+            );
+            to_unmerge.push(existing_ext_release);
+        } else {
+            // If there are no existing sysexts that match this new one, warn
+            warn!(
+                "Did not find any exisiting sysexts with SYSEXT_ID: {:?}",
+                new_extension.sysext_id
+            );
+        }
+    }
+    Ok((to_merge, to_unmerge))
 }
 
 fn get_existing_sysexts() -> Result<Vec<Extension>, Error> {
@@ -205,6 +252,24 @@ fn get_existing_sysexts() -> Result<Vec<Extension>, Error> {
             .context("Could not find name")?
             .to_string();
 
+        let list_output: Vec<ExtensionListObj> = serde_json::from_str(
+            Command::new("systemd-sysext")
+                .arg("list")
+                .arg("--json")
+                .arg("pretty")
+                .output_and_check()
+                .context("Failed to run systemd-sysext list")?
+                .as_str(),
+        )
+        .context("Failed to convert to ExtensionListObj")?;
+        let path = list_output
+            .into_iter()
+            .find(|obj| obj.name == name)
+            .context(format!(
+                "Failed to find {name} in systemd-sysext list output"
+            ))?
+            .path;
+
         ret.push(Extension {
             id: extension_release_obj.get_value("ID").map(|s| s.to_string()),
             sysext_id: extension_release_obj
@@ -219,6 +284,7 @@ fn get_existing_sysexts() -> Result<Vec<Extension>, Error> {
             architecture: extension_release_obj
                 .get_value("ARCHITECTURE")
                 .map(|s| s.to_string()),
+            path: Some(path),
             name,
         });
     }
@@ -226,12 +292,18 @@ fn get_existing_sysexts() -> Result<Vec<Extension>, Error> {
 }
 
 pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
+    let Some(sysexts) = &host_config.sysexts else {
+        debug!("Received no sysexts in Host Config. Returning.");
+        return Ok(());
+    };
+
     // Discover existing sysexts
     let existing = get_existing_sysexts().context("Failed to get existing sysexts on OS")?;
     debug!("Found existing extensions: {:?}", existing);
 
-    let sysexts_to_merge = get_list_of_sysexts_to_merge(&host_config.sysexts, &existing)
-        .with_context(|| "Failed to get list of sysexts to merge")?;
+    let (sysexts_to_merge, sysexts_to_unmerge) =
+        get_list_of_sysexts_to_merge_and_unmerge(&sysexts, &existing)
+            .with_context(|| "Failed to get list of sysexts to merge")?;
     debug!("Merging the following extensions: {:?}", sysexts_to_merge);
 
     // Merge new sysexts
@@ -256,6 +328,15 @@ pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
             Path::exists(&sysext_new_path)
         );
     }
+
+    // Remove sysexts from /var/lib/extensions that should be unmerged
+    for sysext in sysexts_to_unmerge {
+        debug!("Attempting to remove sysext {sysext:?}");
+        let path = sysext.path.ok_or_else(|| Error::msg("Did not find path"))?;
+        debug!("Removing file from {path}");
+        fs::remove_file(path).context("Failed to remove file")?;
+    }
+
     // Call systemd-sysext
     Command::new("systemd-sysext")
         .arg("refresh")

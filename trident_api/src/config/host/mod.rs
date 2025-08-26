@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "schemars")]
 use schemars::JsonSchema;
-use sysext::Sysext;
 
 use crate::{
     constants::internal_params::SELF_UPGRADE_TRIDENT, is_default,
@@ -26,6 +25,7 @@ use internal_params::InternalParams;
 use os::{ManagementOs, Os, SelinuxMode};
 use scripts::Scripts;
 use storage::Storage;
+use sysext::Sysexts;
 use trident::Trident;
 
 /// HostConfiguration is the configuration for a host. Trident agent will use this to configure the host.
@@ -69,9 +69,9 @@ pub struct HostConfiguration {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<OsImage>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "schemars", schemars(skip))]
-    pub sysexts: Vec<Sysext>,
+    pub sysexts: Option<Sysexts>,
 }
 
 impl HostConfiguration {

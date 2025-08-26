@@ -465,7 +465,7 @@ impl Trident {
                 "install called without host configuration set",
             ))?;
 
-        if host_config.sysexts.is_empty() {
+        if host_config.sysexts.is_none() {
             return Ok(());
         }
         engine::install_sysexts(&host_config)
