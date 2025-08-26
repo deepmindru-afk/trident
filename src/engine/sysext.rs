@@ -313,6 +313,7 @@ pub fn install_sysexts(host_config: &HostConfiguration) -> Result<(), Error> {
     // Discover existing sysexts
     if !Path::new(CACHE_PATH).exists() {
         // Create cache to store state of sysexts before Trident begins operations
+        debug!("No cache found so creating one at '{CACHE_PATH}'");
         write_to_cache()?;
     }
     let cache_contents = fs::read_to_string(CACHE_PATH).context("Failed to read from cache")?;
