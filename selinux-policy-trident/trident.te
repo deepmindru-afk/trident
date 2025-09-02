@@ -267,7 +267,7 @@ allow trident_t self:tcp_socket { connect create getattr getopt read setopt shut
 allow trident_t self:unix_dgram_socket { connect create write };
 allow trident_t self:udp_socket { connect create getattr setopt read write };
 allow trident_t self:key { search write };
-allow trident_t self:sem { associate create destroy read unix_read unix_write write };
+# allow trident_t self:sem { associate create destroy read unix_read unix_write write };
 
 # Ensure any new files, directories, or symbolic links created by trident_t are automatically labeled with type trident_var_lib_t
 files_var_lib_filetrans(trident_t, trident_var_lib_t, { dir file lnk_file })
@@ -866,8 +866,12 @@ optional_policy(`
 
 #============= lvm_t ==============
 # This is necessary for Trident to create encrypted volumes
-allow lvm_t trident_t:sem { associate read unix_read unix_write write };
-allow lvm_t initrc_t:sem { associate read unix_read unix_write write };
+# allow lvm_t trident_t:sem { associate read unix_read unix_write write };
+# allow lvm_t initrc_t:sem { associate read unix_read unix_write write };
+
+auditallow lvm_t trident_t:sem { associate read unix_read unix_write write };
+auditallow lvm_t lvm_t:sem { associate read unix_read unix_write write };
+
 
 # These permissions are necessary for cryptsetup luksOpen to succeed.
 allow lvm_t init_t:key search; # Allows LVM to write to search the kernel keyring.
@@ -875,6 +879,9 @@ allow lvm_t tpm_device_t:chr_file write; # Allows LVM to write to the TPM device
 
 # This is necessary for veritysetup to be able to read a key file in /tmp.
 allow lvm_t tmp_t:file { getattr ioctl open read };
+
+auditallow trident_t self:sem create;
+auditallow lvm_t self:sem create;
 
 #============= mount_t =============
 allow mount_t trident_var_lib_t:dir mounton;
