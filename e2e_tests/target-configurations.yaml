@@ -118,6 +118,8 @@ virtualMachine:
     pullrequest:
       - base
       - combined
+      - encrypted-partition
+      - encrypted-swap
       - misc
       - raid-mirrored
       - raid-resync-small
