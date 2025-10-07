@@ -55,4 +55,3 @@ This parameter is required. It must be non-empty and unique among the IDs of all
 | -------------- | ----------------- |
 | Type           | `string`          |
 | Format         | `Block Device ID` |
-

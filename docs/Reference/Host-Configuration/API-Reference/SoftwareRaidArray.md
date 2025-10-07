@@ -68,4 +68,3 @@ This is used to reference the RAID array on the system. For example, `some-raid`
 | Characteristic | Value    |
 | -------------- | -------- |
 | Type           | `string` |
-
