@@ -56,7 +56,8 @@ scripts:
         - clean-install
         - ab-update
       content: echo 'testing-user ALL=(ALL:ALL) NOPASSWD:ALL' > /etc/sudoers.d/testing-user
-  updateCheck:
+health:
+  checks:
     - name: check-non-existent-service-to-invoke-rollback
       systemdServices:
         - non-existent-service1

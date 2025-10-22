@@ -104,16 +104,6 @@ scripts:
     content: /var/config-script.sh
     environmentVariables:
       SAMPLE_VARIABLE: sample-variable-value
-  updateCheck:
-  - name: sample-commit-script
-    runOn:
-    - clean-install
-    - ab-update
-    content: echo 'success'
-  - name: user.slice
-    services:
-    - user.slice
-    timeoutSeconds: 10
 os:
   netplan:
     version: 2
@@ -136,4 +126,15 @@ os:
 image:
   url: file:///path/to/image.cosi
   sha384: ec9a9aa23f02b30f4ec6a168b9bc24733b652eeab4f8abc243630666a5e34cea1667c34313a13ec1564ac4871b80112f
+health:
+  checks:
+  - name: sample-commit-script
+    runOn:
+    - clean-install
+    - ab-update
+    content: echo 'success'
+  - name: user.slice
+    systemdServices:
+    - user.slice
+    timeoutSeconds: 10
 ```

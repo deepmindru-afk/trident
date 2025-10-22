@@ -11,11 +11,11 @@ use netplan_types::{
 use crate::{
     config::{
         host::os::{KernelCommandLine, Selinux, SelinuxMode},
-        AbUpdate, AbVolumePair, AdditionalFile, Disk, EncryptedVolume, Encryption, FileSystem,
-        FileSystemSource, HostConfiguration, ImageSha384, MountOptions, MountPoint,
-        NewFileSystemType, Os, OsImage, Partition, PartitionTableType, PartitionType, Raid,
-        RaidLevel, Script, ScriptSource, Scripts, Services, ServicingTypeSelection,
-        SoftwareRaidArray, SshMode, Storage, Swap, SystemdCheck, UpdateCheck, User, VerityDevice,
+        AbUpdate, AbVolumePair, AdditionalFile, Check, Disk, EncryptedVolume, Encryption,
+        FileSystem, FileSystemSource, Health, HostConfiguration, ImageSha384, MountOptions,
+        MountPoint, NewFileSystemType, Os, OsImage, Partition, PartitionTableType, PartitionType,
+        Raid, RaidLevel, Script, ScriptSource, Scripts, Services, ServicingTypeSelection,
+        SoftwareRaidArray, SshMode, Storage, Swap, SystemdCheck, User, VerityDevice,
     },
     constants::{self, MOUNT_OPTION_READ_ONLY, ROOT_MOUNT_POINT_PATH},
 };
@@ -182,8 +182,10 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     )]),
                     ..Default::default()
                 }],
-                update_check: vec![
-                    UpdateCheck::Script(
+            },
+            health: Health {
+                checks: vec![
+                    Check::Script(
                         Script {
                             name: "sample-commit-script".into(),
                             run_on: vec![ServicingTypeSelection::CleanInstall, ServicingTypeSelection::AbUpdate],
@@ -191,7 +193,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                             ..Default::default()
                         }
                     ),
-                    UpdateCheck::SystemdCheck(
+                    Check::SystemdCheck(
                         SystemdCheck {
                             name: "user.slice".into(),
                             systemd_services: vec!["user.slice".into()],
@@ -393,8 +395,10 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     )]),
                     ..Default::default()
                 }],
-                update_check: vec![
-                    UpdateCheck::Script(
+            },
+            health: Health {
+                checks: vec![
+                    Check::Script(
                         Script {
                             name: "sample-commit-script".into(),
                             run_on: vec![ServicingTypeSelection::CleanInstall, ServicingTypeSelection::AbUpdate],
@@ -402,7 +406,7 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                             ..Default::default()
                         }
                     ),
-                    UpdateCheck::SystemdCheck(
+                    Check::SystemdCheck(
                         SystemdCheck {
                             name: "user.slice".into(),
                             systemd_services: vec!["user.slice".into()],

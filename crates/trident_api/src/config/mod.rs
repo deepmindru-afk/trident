@@ -3,6 +3,7 @@ pub(crate) mod local;
 
 pub use host::{
     error::{HostConfigurationDynamicValidationError, HostConfigurationStaticValidationError},
+    health::{Check, Health, SystemdCheck},
     image::{ImageSha384, OsImage},
     os::{
         additional_files::AdditionalFile,
@@ -12,7 +13,7 @@ pub use host::{
         users::{Password, SshMode, User},
         KernelCommandLine, ManagementOs, Os, Selinux, SelinuxMode,
     },
-    scripts::{Script, ScriptSource, Scripts, ServicingTypeSelection, SystemdCheck, UpdateCheck},
+    scripts::{Script, ScriptSource, Scripts, ServicingTypeSelection},
     storage::abupdate::{AbUpdate, AbVolumePair},
     storage::{
         disks::{Disk, PartitionTableType},

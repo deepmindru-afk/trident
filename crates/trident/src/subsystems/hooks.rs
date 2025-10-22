@@ -14,8 +14,8 @@ use log::{debug, info, trace};
 use osutils::{dependencies::Dependency, exe::OutputChecker, files, scripts::ScriptRunner};
 use trident_api::{
     config::{
-        HostConfigurationDynamicValidationError, HostConfigurationStaticValidationError, Script,
-        ScriptSource, SystemdCheck, UpdateCheck,
+        Check, HostConfigurationDynamicValidationError, HostConfigurationStaticValidationError,
+        Script, ScriptSource, SystemdCheck,
     },
     constants::{
         internal_params::WRITABLE_ETC_OVERLAY_HOOKS, DEFAULT_SCRIPT_INTERPRETER,
@@ -387,7 +387,7 @@ impl HooksSubsystem {
         if ctx.servicing_type != ServicingType::AbUpdate {
             return Ok(());
         }
-        if !ctx.spec.scripts.update_check.is_empty() {
+        if !ctx.spec.health.checks.is_empty() {
             debug!("Running update-check scripts");
         }
 
@@ -395,13 +395,13 @@ impl HooksSubsystem {
         let script_errors = Arc::new(Mutex::new(Vec::new()));
         // Create parallel update-check threads within a scope, the
         // threads will all be joined before the scope ends.
-        let update_check_scripts = ctx.spec.scripts.update_check.clone();
+        let health_checks = ctx.spec.health.checks.clone();
         thread::scope(|s| {
-            for script in update_check_scripts {
+            for health_check in health_checks {
                 let subsystem = &self;
                 let loop_script_errors = script_errors.clone();
-                s.spawn(move || match script {
-                    UpdateCheck::SystemdCheck(systemd_check) => {
+                s.spawn(move || match health_check {
+                    Check::SystemdCheck(systemd_check) => {
                         if let Err(err) = subsystem
                             .run_systemd_check(&systemd_check, Path::new(ROOT_MOUNT_POINT_PATH))
                         {
@@ -411,7 +411,7 @@ impl HooksSubsystem {
                             });
                         }
                     }
-                    UpdateCheck::Script(inner_script) => {
+                    Check::Script(inner_script) => {
                         if let Err(err) = subsystem.run_script(
                             &inner_script,
                             ctx,
