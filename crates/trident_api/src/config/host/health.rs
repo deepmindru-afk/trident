@@ -106,7 +106,7 @@ mod tests {
 
     use crate::config::host::scripts::{ScriptSource, ServicingTypeSelection};
 
-    fn create_test_update_check_scripts() -> Health {
+    fn create_test_health_checks() -> Health {
         Health {
             checks: vec![
                 Check::Script(Script {
@@ -126,8 +126,8 @@ mod tests {
     }
 
     #[test]
-    fn test_update_check_should_run() {
-        let health = create_test_update_check_scripts();
+    fn test_health_checks_should_run() {
+        let health = create_test_health_checks();
         health.checks.iter().for_each(|check| {
             assert!(check.should_run(ServicingType::AbUpdate));
             assert!(!check.should_run(ServicingType::CleanInstall));
@@ -135,8 +135,8 @@ mod tests {
     }
 
     #[test]
-    fn test_update_check_serde() {
-        let health = create_test_update_check_scripts();
+    fn test_health_checks_serde() {
+        let health = create_test_health_checks();
         let serialized = serde_yaml::to_string(&health.checks).unwrap();
         println!("Serialized health check: {}", &serialized);
         assert!(

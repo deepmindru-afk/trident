@@ -380,10 +380,7 @@ impl HooksSubsystem {
 
     /// This function will be called outside the standard subsystem flow
     /// before Trident commits a target OS.
-    pub fn execute_update_check_scripts(
-        &mut self,
-        ctx: &EngineContext,
-    ) -> Result<(), TridentError> {
+    pub fn execute_health_checks(&mut self, ctx: &EngineContext) -> Result<(), TridentError> {
         if ctx.servicing_type != ServicingType::AbUpdate {
             return Ok(());
         }
@@ -440,11 +437,9 @@ impl HooksSubsystem {
                 "Update-check scripts completed with errors:\n{}",
                 script_errors_message
             );
-            return Err(TridentError::new(
-                ServicingError::UpdateCheckScriptsFailed {
-                    details: script_errors_message,
-                },
-            ));
+            return Err(TridentError::new(ServicingError::HealthChecksFailed {
+                details: script_errors_message,
+            }));
         }
         Ok(())
     }

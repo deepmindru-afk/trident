@@ -40,9 +40,25 @@ pub enum BootValidationResult {
 pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, TridentError> {
     info!("Validating whether host correctly booted from updated runtime OS image");
 
-    let servicing_type = match datastore.host_status().servicing_state {
-        ServicingState::AbUpdateFinalized => ServicingType::AbUpdate,
-        ServicingState::CleanInstallFinalized => ServicingType::CleanInstall,
+    let current_servicing_state = datastore.host_status().servicing_state;
+
+    if match current_servicing_state {
+        ServicingState::AbUpdateHealthCheckFailed
+        | ServicingState::CleanInstallHealthCheckFailed => true,
+        _ => false,
+    } {
+        // If we are in a health check rollback state, we've rolled back to
+        // previous partition so just update the Host Status to Provisioned.
+        return Ok(BootValidationResult::CorrectBootProvisioned);
+    }
+
+    let servicing_type = match current_servicing_state {
+        ServicingState::AbUpdateFinalized | ServicingState::AbUpdateHealthCheckFailed => {
+            ServicingType::AbUpdate
+        }
+        ServicingState::CleanInstallFinalized | ServicingState::CleanInstallHealthCheckFailed => {
+            ServicingType::CleanInstall
+        }
         _ => ServicingType::NoActiveServicing,
     };
 
@@ -75,10 +91,22 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
         info!("Host successfully booted from updated target OS image");
 
         // Execute update-check scripts, if one fails, trigger rollback
-        match HooksSubsystem::default().execute_update_check_scripts(&ctx) {
+        match HooksSubsystem::default().execute_health_checks(&ctx) {
             Ok(()) => {}
             Err(e) => {
                 info!("Failed to execute update check scripts: {e:?}");
+
+                // Update host status to reflect health check failure
+                datastore.with_host_status(|host_status| {
+                    host_status.servicing_state = match servicing_type {
+                        ServicingType::AbUpdate => ServicingState::AbUpdateHealthCheckFailed,
+                        ServicingType::CleanInstall => {
+                            ServicingState::CleanInstallHealthCheckFailed
+                        }
+                        // Shouldn't happen because of previous checks
+                        _ => current_servicing_state,
+                    };
+                })?;
 
                 // Generate the new log filename
                 let new_commit_failure_log_filename = format!(

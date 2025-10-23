@@ -496,6 +496,9 @@ pub enum ServicingError {
     #[error("Failed to get SELINUXTYPE")]
     GetSelinuxType,
 
+    #[error("Failed health-checks: '{details}'")]
+    HealthChecksFailed { details: String },
+
     #[error("Failed to list boot entries via efibootmgr or parse them")]
     ListAndParseBootEntries,
 
@@ -587,9 +590,6 @@ pub enum ServicingError {
         timeout_seconds: usize,
         last_error: String,
     },
-
-    #[error("Failed update-check: '{details}'")]
-    UpdateCheckScriptsFailed { details: String },
 
     #[error("Failed to update UKI")]
     UpdateUki,

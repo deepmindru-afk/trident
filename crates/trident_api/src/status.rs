@@ -99,6 +99,10 @@ pub enum ServicingState {
     /// Servicing has been completed, and the host successfully booted from the updated target OS
     /// image. Trident is ready to begin a new servicing.
     Provisioned,
+    /// Clean Install has been completed, the host booted into the target OS but the Health Checks failed.
+    CleanInstallHealthCheckFailed,
+    /// A/B update has been completed, the host booted into the target OS but the Health Checks failed.
+    AbUpdateHealthCheckFailed,
 }
 
 /// A/B volume selection. Determines which set of volumes are currently
