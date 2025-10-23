@@ -1487,6 +1487,7 @@
       "type": "object",
       "required": [
         "name",
+        "runOn",
         "systemdServices",
         "timeoutSeconds"
       ],
@@ -1494,6 +1495,13 @@
         "name": {
           "description": "Name of the script.",
           "type": "string"
+        },
+        "runOn": {
+          "description": "List of servicing types that the script should run on.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ServicingTypeSelection"
+          }
         },
         "systemdServices": {
           "description": "List of systemd services that need to be in successful state.",

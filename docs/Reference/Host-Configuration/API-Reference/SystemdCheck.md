@@ -18,6 +18,21 @@ Name of the script.
 | -------------- | -------- |
 | Type           | `string` |
 
+### `runOn` **<span>(required)</span>**
+
+List of servicing types that the script should run on.
+
+| Characteristic | Value   |
+| -------------- | ------- |
+| Type           | `array` |
+
+- Items of the array must have the type:
+
+   | Characteristic | Value                                                 |
+   | -------------- | ----------------------------------------------------- |
+   | Type           | `ServicingTypeSelection`                              |
+   | Link           | [ServicingTypeSelection](./ServicingTypeSelection.md) |
+
 ### `systemdServices` **<span>(required)</span>**
 
 List of systemd services that need to be in successful state.

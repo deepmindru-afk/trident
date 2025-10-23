@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "schemars")]
 use schemars::JsonSchema;
 
-use crate::config::host::scripts::Script;
+use crate::config::host::scripts::{Script, ServicingTypeSelection};
 use crate::status::ServicingType;
 
 /// Scripts that can be run on the host during Trident stages.
@@ -97,6 +97,10 @@ pub struct SystemdCheck {
 
     /// Timeout for the systemd check.
     pub timeout_seconds: usize,
+
+    /// List of servicing types that the script should run on.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub run_on: Vec<ServicingTypeSelection>,
 }
 
 /// Unit Test for should_run

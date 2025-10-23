@@ -137,4 +137,7 @@ health:
     systemdServices:
     - user.slice
     timeoutSeconds: 10
+    runOn:
+    - clean-install
+    - ab-update
 ```
