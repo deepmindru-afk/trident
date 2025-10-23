@@ -61,7 +61,7 @@ flowchart TD
     A(["NotProvisioned"]) ==> B{"trident install"}
     B ==> C["CleanInstallStaged"]
     C ==> D["CleanInstallFinalized"]
-    D ==> G(["Finalize Reboot"])
+    D === G(["Finalize Reboot"])
     G ==> E{"trident commit **A**"}
     E == Commit succeeded ==> F["Provisioned **A**"]
     E -. Wrong Partition .-> A
@@ -72,7 +72,7 @@ flowchart TD
     AA(["Provisioned **A**"]) ==> BB{"trident update"}
     BB ==> CC["AbUpdateStaged"]
     CC ==> DD["AbUpdateFinalized"]
-    DD ==> JJ(["Finalize Reboot"])
+    DD === JJ(["Finalize Reboot"])
     JJ ==> EE{"trident commit **B**"}
     EE == Commit succeeded ==> FF["Provisioned **B**"]
     EE -. Wrong partition .-> AA
@@ -80,7 +80,7 @@ flowchart TD
     EE -. Encryption failure .-> DD
     EE -. Datastore failure .-> DD
     EE -. Health Check failure .-> HH["AbUpdateHealthCheckFailed"]
-    HH -.-> KK(["Rollback Reboot"])
+    HH -.- KK(["Rollback Reboot"])
     KK -.-> II{"trident commit **A**"}
     II -. Wrong partition .-> HH
     II -. Datastore failure .-> HH
