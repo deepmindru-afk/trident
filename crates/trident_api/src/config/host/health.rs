@@ -124,6 +124,7 @@ mod tests {
                     name: "test-systemd-check".into(),
                     systemd_services: vec!["test-service".into()],
                     timeout_seconds: 60,
+                    run_on: vec![ServicingTypeSelection::AbUpdate],
                 }),
             ],
         }
