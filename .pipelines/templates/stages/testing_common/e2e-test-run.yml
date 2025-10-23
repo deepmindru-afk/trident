@@ -160,14 +160,11 @@ steps:
     displayName: "🅱️🔄 Stage and finalize A/B update into target OS B"
     condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
 
-  # - bash: |
-  #     set -eu
-  #     if [ ${{ parameters.tridentConfigurationName }} == 'auto-rollback' ]; then
-  #       # auto-rollback will fail the first update (to volume-b) and
-  #       # the rollback should boot to volume-a
-  #       echo "##vso[task.setvariable variable=abActiveVolume]volume-a"
-  #     fi
-  #   displayName: "Adjust active volume for auto-rollback scenario"
+  - template: ../testing_common/capture-screenshot.yml
+    parameters:
+      screenshotName: "update-b"
+      captureScreenshot: ${{ ne(variables['abActiveVolume'], 'null') }}
+      deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml
     parameters:
@@ -234,14 +231,10 @@ steps:
       displayNameSpecifier: "A/B update into target OS B"
       artifactName: "junit_for_trident_ab_update_B"
 
-  # - bash: |
-  #     set -eu
-  #     if [ ${{ parameters.tridentConfigurationName }} == 'auto-rollback' ]; then
-  #       # for auto-rollback, only run the first update to test rollback
-  #       echo "##vso[task.setvariable variable=abActiveVolume]null"
-  #       echo "##vso[task.setvariable variable=skipJunitHandling]true"
-  #     fi
-  #   displayName: "Limit subsequent testing for auto-rollback scenario"
+  - bash: |
+      echo "##vso[task.setvariable variable=testAutoRollback]true"
+      echo 'Test auto-rollback'
+    displayName: "Determine whether to test auto-rollback"
 
   - bash: |
       set -eux
@@ -263,15 +256,6 @@ steps:
       if [ -n "${{ parameters.httpsProxy }}" ]; then
         PROXY_ARG="--proxy HTTPS_PROXY=${{ parameters.httpsProxy }}"
       fi
-
-      # # Create rollback copy of host config file
-      # cp "${{ parameters.tridentConfigPath }}/trident-config.yaml" "/tmp/trident-config-rollback.yaml"
-      # cat /tmp/trident-config-rollback.yaml
-
-      # # Add failing health checks to the rollback config
-      # python3 $(Build.SourcesDirectory)/tests/e2e_tests/helpers/autorollback_host_config.py \
-      #     --hostconfig "/tmp/trident-config-rollback.yaml"
-      # cat /tmp/trident-config-rollback.yaml
 
       echo "Running script to stage and finalize A/B update..."
       ./bin/storm-trident helper ab-update \
@@ -295,7 +279,13 @@ steps:
     timeoutInMinutes: 15
     workingDirectory: $(Build.SourcesDirectory)
     displayName: "🅰️🔄⎌ Stage and finalize A/B update into target OS A triggering auto-rollback"
-    condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
+    condition: and(succeeded(), eq(variables['testAutoRollback'], 'true'), ne(variables['abActiveVolume'], 'null'))
+
+  - template: ../testing_common/capture-screenshot.yml
+    parameters:
+      screenshotName: "update-a-autorollback"
+      captureScreenshot: ${{ and(eq(variables['testAutoRollback'], 'true'), ne(variables['abActiveVolume'], 'null')) }}
+      deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml
     parameters:
@@ -327,7 +317,7 @@ steps:
     timeoutInMinutes: 5
     workingDirectory: $(Build.SourcesDirectory)/tests/e2e_tests
     displayName: "🔬⎌ Run Trident E2E tests after A/B update into target OS A triggering auto-rollback"
-    condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
+    condition: and(succeeded(), eq(variables['testAutoRollback'], 'true'), ne(variables['abActiveVolume'], 'null'))
 
   - bash: |
       set -eux
@@ -372,6 +362,12 @@ steps:
     workingDirectory: $(Build.SourcesDirectory)
     displayName: "🅰️🔄 Stage and finalize A/B update into target OS A"
     condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
+
+  - template: ../testing_common/capture-screenshot.yml
+    parameters:
+      screenshotName: "update-a"
+      captureScreenshot: ${{ ne(variables['abActiveVolume'], 'null') }}
+      deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml
     parameters:
