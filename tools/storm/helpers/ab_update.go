@@ -92,6 +92,61 @@ func (h *AbUpdateHelper) updateHostConfig(tc storm.TestCase) error {
 		tc.Skip("Staging not requested")
 	}
 
+	if h.args.ForcedRollback {
+		if _, ok := h.config["health"].(map[string]interface{}); !ok {
+			h.config["health"] = map[string]interface{}{}
+		}
+		if _, ok := h.config["health"].(map[string]interface{})["checks"].([]interface{}); !ok {
+			h.config["health"].(map[string]interface{})["checks"] = make([]interface{}, 0)
+		}
+
+		// Add a script health check that always fails during A/B update to trigger auto-rollback
+		h.config["health"].(map[string]interface{})["checks"] = append(
+			h.config["health"].(map[string]interface{})["checks"].([]interface{}),
+			map[string]interface{}{
+				"content": "exit 1",
+				"runOn":   []string{"ab-update"},
+				"name":    "invoke-rollback-from-script",
+			},
+		)
+
+		// Add a systemd health check that always fails during A/B update to trigger auto-rollback
+		h.config["health"].(map[string]interface{})["checks"] = append(
+			h.config["health"].(map[string]interface{})["checks"].([]interface{}),
+			map[string]interface{}{
+				"runOn":           []string{"ab-update"},
+				"name":            "check-non-existent-service-to-invoke-rollback",
+				"systemdServices": []string{"non-existent-service1", "non-existent-service2"},
+				"timeoutSeconds":  30,
+			},
+		)
+	} else {
+		// Remove check-non-existent-service-to-invoke-rollback and
+		// invoke-rollback-from-script checks if they exist
+		if health, ok := h.config["health"].(map[string]interface{}); ok {
+			if checks, ok := health["checks"].([]interface{}); ok {
+				newChecks := make([]interface{}, 0)
+				for _, check := range checks {
+					checkMap, ok := check.(map[string]interface{})
+					if !ok {
+						newChecks = append(newChecks, check)
+						continue
+					}
+					name, ok := checkMap["name"].(string)
+					if !ok {
+						newChecks = append(newChecks, check)
+						continue
+					}
+					if name == "check-non-existent-service-to-invoke-rollback" || name == "invoke-rollback-from-script" {
+						continue
+					}
+					newChecks = append(newChecks, check)
+				}
+				health["checks"] = newChecks
+			}
+		}
+	}
+
 	// Extract the OLD URL from the configuration
 	oldUrl, ok := h.config["image"].(map[string]interface{})["url"].(string)
 	if !ok {

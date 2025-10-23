@@ -264,14 +264,14 @@ steps:
         PROXY_ARG="--proxy HTTPS_PROXY=${{ parameters.httpsProxy }}"
       fi
 
-      # Create rollback copy of host config file
-      cp "${{ parameters.tridentConfigPath }}/trident-config.yaml" "/tmp/trident-config-rollback.yaml"
-      cat /tmp/trident-config-rollback.yaml
+      # # Create rollback copy of host config file
+      # cp "${{ parameters.tridentConfigPath }}/trident-config.yaml" "/tmp/trident-config-rollback.yaml"
+      # cat /tmp/trident-config-rollback.yaml
 
-      # Add failing health checks to the rollback config
-      python3 $(Build.SourcesDirectory)/tests/e2e_tests/helpers/autorollback_host_config.py \
-          --hostconfig "/tmp/trident-config-rollback.yaml"
-      cat /tmp/trident-config-rollback.yaml
+      # # Add failing health checks to the rollback config
+      # python3 $(Build.SourcesDirectory)/tests/e2e_tests/helpers/autorollback_host_config.py \
+      #     --hostconfig "/tmp/trident-config-rollback.yaml"
+      # cat /tmp/trident-config-rollback.yaml
 
       echo "Running script to stage and finalize A/B update..."
       ./bin/storm-trident helper ab-update \
@@ -279,7 +279,7 @@ steps:
           "${{ parameters.hostIp }}" \
           "${{ parameters.userName }}" \
           "${{ parameters.runtimeEnv }}" \
-          --trident-config "/tmp/trident-config-rollback.yaml" \
+          --trident-config $(tridentConfigFile) \
           --version $(version) \
           --stage-ab-update \
           --finalize-ab-update \
