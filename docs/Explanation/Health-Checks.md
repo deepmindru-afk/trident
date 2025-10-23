@@ -58,43 +58,37 @@ config:
   layout: dagre
 ---
 flowchart TD
-    A(["NotProvisioned"]) ==> B{"trident install"}
+    A["NotProvisioned"] ==> B{"trident install"}
     B ==> C["CleanInstallStaged"]
     C ==> D["CleanInstallFinalized"]
     D === G(["Finalize Reboot"])
     G ==> E{"trident commit **A**"}
     E == Commit succeeded ==> F["Provisioned **A**"]
-    E -. Wrong Partition .-> A
-    E -. Health Check Failure .-> A
-    E -. UEFI var failure .-> D
-    E -. Encryption failure .-> D
-    E -. Datastore failure .-> D
-    AA(["Provisioned **A**"]) ==> BB{"trident update"}
+    E -.- Z(["Health Check Failure"])
+    Z -.-> A
+    AA["Provisioned **A**"] ==> BB{"trident update"}
     BB ==> CC["AbUpdateStaged"]
     CC ==> DD["AbUpdateFinalized"]
     DD === JJ(["Finalize Reboot"])
     JJ ==> EE{"trident commit **B**"}
     EE == Commit succeeded ==> FF["Provisioned **B**"]
-    EE -. Wrong partition .-> AA
-    EE -. UEFI var failure .-> DD
-    EE -. Encryption failure .-> DD
-    EE -. Datastore failure .-> DD
-    EE -. Health Check failure .-> HH["AbUpdateHealthCheckFailed"]
+    EE -.- ZZ(["Health Check failure"])
+    ZZ -.-> HH["AbUpdateHealthCheckFailed"]
     HH -.- KK(["Rollback Reboot"])
     KK -.-> II{"trident commit **A**"}
-    II -. Wrong partition .-> HH
-    II -. Datastore failure .-> HH
     II -. Commit succeeded .-> AA
     style A fill:#FFF9C4
     style C fill:#FFF9C4
     style D fill:#FFF9C4
     style G fill:#BBDEFB
     style F fill:#00C853
+    style Z fill:#FFCDD2
     style AA fill:#FFF9C4
     style CC fill:#FFF9C4
     style DD fill:#FFF9C4
     style JJ fill:#BBDEFB
     style FF fill:#00C853
+    style ZZ fill:#FFCDD2
     style HH fill:#FFF9C4
     style KK fill:#BBDEFB
     linkStyle 0 stroke:#00C853,fill:none
@@ -105,23 +99,15 @@ flowchart TD
     linkStyle 5 stroke:#00C853,fill:none
     linkStyle 6 stroke:#D50000,fill:none
     linkStyle 7 stroke:#D50000,fill:none
-    linkStyle 8 stroke:#D50000,fill:none
-    linkStyle 9 stroke:#D50000,fill:none
-    linkStyle 10 stroke:#D50000,fill:none
+    linkStyle 8 stroke:#00C853,fill:none
+    linkStyle 9 stroke:#00C853,fill:none
+    linkStyle 10 stroke:#00C853,fill:none
     linkStyle 11 stroke:#00C853,fill:none
     linkStyle 12 stroke:#00C853,fill:none
     linkStyle 13 stroke:#00C853,fill:none
-    linkStyle 14 stroke:#00C853,fill:none
-    linkStyle 15 stroke:#00C853,fill:none
-    linkStyle 16 stroke:#00C853,fill:none
+    linkStyle 14 stroke:#D50000,fill:none
+    linkStyle 15 stroke:#D50000,fill:none
+    linkStyle 16 stroke:#D50000,fill:none
     linkStyle 17 stroke:#D50000,fill:none
     linkStyle 18 stroke:#D50000,fill:none
-    linkStyle 19 stroke:#D50000,fill:none
-    linkStyle 20 stroke:#D50000,fill:none
-    linkStyle 21 stroke:#D50000,fill:none
-    linkStyle 22 stroke:#D50000,fill:none
-    linkStyle 23 stroke:#D50000,fill:none
-    linkStyle 24 stroke:#D50000,fill:none
-    linkStyle 25 stroke:#D50000,fill:none
-    linkStyle 26 stroke:#D50000,fill:none
 ```
