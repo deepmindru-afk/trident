@@ -42,11 +42,10 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
 
     let current_servicing_state = datastore.host_status().servicing_state;
 
-    if match current_servicing_state {
-        ServicingState::AbUpdateHealthCheckFailed
-        | ServicingState::CleanInstallHealthCheckFailed => true,
-        _ => false,
-    } {
+    if matches!(
+        current_servicing_state,
+        ServicingState::AbUpdateHealthCheckFailed | ServicingState::CleanInstallHealthCheckFailed
+    ) {
         // If we are in a health check rollback state, we've rolled back to
         // previous partition so just update the Host Status to Provisioned.
         return Ok(BootValidationResult::CorrectBootProvisioned);
