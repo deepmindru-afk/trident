@@ -102,104 +102,129 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
         info!("Host successfully booted from updated target OS image");
     }
 
-    // Only run extended validation (health checks, boot order, encryption) if
-    // we are validating a *Finalized state and the current boot is from the
-    // expected root.
-    //
-    // If the current servicing state is AbUpdateHealthCheckFailed, we are only
-    // validating the rollback has booted from the expected root.
-    let extended_validation_for_finalized = booted_to_expected_root
-        && current_servicing_state != ServicingState::AbUpdateHealthCheckFailed;
-
-    if extended_validation_for_finalized {
-        // Run health checks to ensure the system is in the desired state
-        let health_check_status =
-            run_health_checks(&ctx, datastore, current_servicing_state, servicing_type)?;
-        if let BootValidationResult::CorrectBootInvalid(err) = health_check_status {
-            return Ok(BootValidationResult::CorrectBootInvalid(err));
+    match (booted_to_expected_root, current_servicing_state) {
+        (true, ServicingState::CleanInstallFinalized)
+        | (true, ServicingState::AbUpdateFinalized) => {
+            // For *Finalized states, when booting from the expected
+            // root, finish the commit process
+            return commit_finalized_on_expected_root(
+                &ctx,
+                datastore,
+                current_servicing_state,
+                servicing_type,
+            );
         }
-
-        // If it's virtdeploy, after confirming that we have booted into the correct image, we need
-        // to update the `BootOrder` to boot from the correct image next time.
-        let use_virtdeploy_workaround = virt::is_virtdeploy()
-            || ctx
-                .spec
-                .internal_params
-                .get_flag(VIRTDEPLOY_BOOT_ORDER_WORKAROUND);
-
-        // Persist the boot order change
-        if datastore.host_status().servicing_state == ServicingState::AbUpdateFinalized
-            || use_virtdeploy_workaround
-        {
-            bootentries::persist_boot_order()
-                .message("Failed to persist boot order after reboot")?;
+        (false, ServicingState::AbUpdateHealthCheckFailed) => {
+            // For AB Update, when health checks previously failed and not
+            // booting from expected root (the servicing OS), report error
+            // and leave host status alone
+            return Err(TridentError::new(ServicingError::CleanInstallRebootCheck {
+                root_device_path: current_root_path.to_string_lossy().to_string(),
+                expected_device_path: expected_root_path.to_string_lossy().to_string(),
+            }));
         }
+        (false, ServicingState::CleanInstallFinalized) => {
+            // For Clean Install, when not booting from expected root, reset
+            // host status state to NotProvisioned
+            datastore.with_host_status(|host_status| {
+                host_status.spec = Default::default();
+                host_status.servicing_state = ServicingState::NotProvisioned;
+            })?;
 
-        // In UKI mode, set systemd-boot's default boot option to the currently running one.
-        if ctx.is_uki()? {
-            efivar::set_default_to_current()
-                .message("Failed to set default boot entry to current")?;
+            return Err(TridentError::new(ServicingError::CleanInstallRebootCheck {
+                root_device_path: current_root_path.to_string_lossy().to_string(),
+                expected_device_path: expected_root_path.to_string_lossy().to_string(),
+            }));
         }
-
-        // If this is a UKI image, then we need to re-generate pcrlock policy to include the PCRs
-        // selected by the user for the current boot only.
-        if let Some(ref encryption) = ctx.spec.storage.encryption {
-            if ctx.is_uki()? {
-                debug!("Regenerating pcrlock policy for current boot");
-
-                // Get the PCRs from Host Configuration
-                let pcrs = encryption
-                    .pcrs
-                    .iter()
-                    .fold(BitFlags::empty(), |acc, &pcr| acc | BitFlags::from(pcr));
-
-                // Get UKI and bootloader binaries for .pcrlock file generation
-                let (uki_binaries, bootloader_binaries) =
-                    encryption::get_binary_paths_pcrlock(&ctx, pcrs, None)
-                        .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
-
-                // Generate a pcrlock policy
-                pcrlock::generate_pcrlock_policy(pcrs, uki_binaries, bootloader_binaries)?;
-            } else {
-                debug!(
-                    "Target OS image is a grub image, \
-                    so skipping re-generating pcrlock policy for current boot"
-                );
-            }
-        }
-    } else if datastore.host_status().servicing_state == ServicingState::CleanInstallStaged
-        || datastore.host_status().servicing_state == ServicingState::CleanInstallFinalized
-    {
-        // If Trident was executing a clean install, need to re-set the Host Status.
-        datastore.with_host_status(|host_status| {
-            host_status.spec = Default::default();
-            host_status.servicing_state = ServicingState::NotProvisioned;
-        })?;
-
-        return Err(TridentError::new(ServicingError::CleanInstallRebootCheck {
-            root_device_path: current_root_path.to_string_lossy().to_string(),
-            expected_device_path: expected_root_path.to_string_lossy().to_string(),
-        }));
-    } else {
-        // If Trident was attempting to rollback an A/B update because a health check failed and
-        // are in the wrong partition, return error without changing the host status.
-        //
-        // Otherwise, for other states, reset the host status to Provisioned and return error.
-        if datastore.host_status().servicing_state != ServicingState::AbUpdateHealthCheckFailed {
-            // If Trident was executing an A/B update, need to re-set the Host Status.
+        (true, ServicingState::AbUpdateHealthCheckFailed)
+        | (false, ServicingState::AbUpdateFinalized) => {
+            // * AbUpdateFinalize, when booting from incorrect root (the servicing OS), mark host status
+            //   state as Provisioned
+            // * AbUpdateHealthCheckFailed, when booting from expected root (the servicing OS), mark host
+            //   status state as Provisioned
             datastore.with_host_status(|host_status| {
                 host_status.spec = host_status.spec_old.clone();
                 host_status.spec_old = Default::default();
                 host_status.servicing_state = ServicingState::Provisioned;
             })?;
-        }
 
-        return Err(TridentError::new(ServicingError::AbUpdateRebootCheck {
-            root_device_path: current_root_path.to_string_lossy().to_string(),
-            expected_device_path: expected_root_path.to_string_lossy().to_string(),
-        }));
+            return Err(TridentError::new(ServicingError::AbUpdateRebootCheck {
+                root_device_path: current_root_path.to_string_lossy().to_string(),
+                expected_device_path: expected_root_path.to_string_lossy().to_string(),
+            }));
+        }
+        (_, state) => {
+            // No other states should happen, return error
+            return Err(TridentError::new(InternalError::UnexpectedServicingState {
+                state,
+            }));
+        }
+    }
+}
+
+/// Completes the commit for AbUpdateFinalized and CleanInstallFinalized states when
+/// the host has booted from the expected root device. This includes running health
+/// checks, updating boot order, updating the encryption pcrlock policy if needed, and
+/// updating the host status.
+fn commit_finalized_on_expected_root(
+    ctx: &EngineContext,
+    datastore: &mut DataStore,
+    current_servicing_state: ServicingState,
+    servicing_type: ServicingType,
+) -> Result<BootValidationResult, TridentError> {
+    // Run health checks to ensure the system is in the desired state
+    let health_check_status =
+        run_health_checks(ctx, datastore, current_servicing_state, servicing_type)?;
+    if let BootValidationResult::CorrectBootInvalid(err) = health_check_status {
+        return Ok(BootValidationResult::CorrectBootInvalid(err));
     }
 
+    // If it's virtdeploy, after confirming that we have booted into the correct image, we need
+    // to update the `BootOrder` to boot from the correct image next time.
+    let use_virtdeploy_workaround = virt::is_virtdeploy()
+        || ctx
+            .spec
+            .internal_params
+            .get_flag(VIRTDEPLOY_BOOT_ORDER_WORKAROUND);
+
+    // Persist the boot order change
+    if datastore.host_status().servicing_state == ServicingState::AbUpdateFinalized
+        || use_virtdeploy_workaround
+    {
+        bootentries::persist_boot_order().message("Failed to persist boot order after reboot")?;
+    }
+
+    // In UKI mode, set systemd-boot's default boot option to the currently running one.
+    if ctx.is_uki()? {
+        efivar::set_default_to_current().message("Failed to set default boot entry to current")?;
+    }
+
+    // If this is a UKI image, then we need to re-generate pcrlock policy to include the PCRs
+    // selected by the user for the current boot only.
+    if let Some(ref encryption) = ctx.spec.storage.encryption {
+        if ctx.is_uki()? {
+            debug!("Regenerating pcrlock policy for current boot");
+
+            // Get the PCRs from Host Configuration
+            let pcrs = encryption
+                .pcrs
+                .iter()
+                .fold(BitFlags::empty(), |acc, &pcr| acc | BitFlags::from(pcr));
+
+            // Get UKI and bootloader binaries for .pcrlock file generation
+            let (uki_binaries, bootloader_binaries) =
+                encryption::get_binary_paths_pcrlock(&ctx, pcrs, None)
+                    .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
+
+            // Generate a pcrlock policy
+            pcrlock::generate_pcrlock_policy(pcrs, uki_binaries, bootloader_binaries)?;
+        } else {
+            debug!(
+                "Target OS image is a grub image, \
+                so skipping re-generating pcrlock policy for current boot"
+            );
+        }
+    }
     match datastore.host_status().servicing_state {
         ServicingState::CleanInstallFinalized => {
             info!("Clean install of target OS succeeded");
