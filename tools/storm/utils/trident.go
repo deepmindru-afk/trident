@@ -144,6 +144,13 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
 	}
 	defer session.Close()
 
+	tridentGetOutput, err := session.Output("sudo trident get")
+	if err != nil {
+		return fmt.Errorf("failed to get volumes: %w", err)
+	}
+	tridentGetOutputStr := string(tridentGetOutput)
+	logrus.Debugf("Host Status:\n%s", tridentGetOutputStr)
+
 	cmd := fmt.Sprintf("sudo systemctl status %s --no-pager", serviceName)
 	logrus.Debugf("Running command: %s", cmd)
 
