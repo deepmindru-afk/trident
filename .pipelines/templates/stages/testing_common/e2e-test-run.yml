@@ -265,7 +265,7 @@ steps:
       fi
 
       # Create rollback copy of host config file
-      cp "${{ parameters.tridentConfigPath }}" "/tmp/trident-config-rollback.yaml"
+      cp "${{ parameters.tridentConfigPath }}/trident-config.yaml" "/tmp/trident-config-rollback.yaml"
       # Add failing health checks to the rollback config
       python3 $(Build.SourcesDirectory)/tests/e2e_tests/helpers/autorollback_host_config.py \
           --hostconfig "/tmp/trident-config-rollback.yaml"
