@@ -601,11 +601,14 @@ impl Trident {
     }
 
     pub fn commit(&mut self, datastore: &mut DataStore) -> Result<ExitKind, TridentError> {
-        // If host's servicing state is Finalized, need to validate that the firmware correctly
-        // booted from the updated target OS image.
-        if datastore.host_status().servicing_state != ServicingState::CleanInstallFinalized
-            && datastore.host_status().servicing_state != ServicingState::AbUpdateFinalized
-        {
+        // If host's servicing state is *Finalized or *HealthCheckFailed, need to
+        // re-evaluate the current state of the host.
+        if !matches!(
+            datastore.host_status().servicing_state,
+            ServicingState::CleanInstallFinalized
+                | ServicingState::AbUpdateFinalized
+                | ServicingState::AbUpdateHealthCheckFailed
+        ) {
             info!("No update in progress, skipping commit");
             return Ok(ExitKind::Done);
         }

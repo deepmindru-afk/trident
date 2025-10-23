@@ -41,23 +41,33 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
     info!("Validating whether host correctly booted from updated runtime OS image");
 
     let current_servicing_state = datastore.host_status().servicing_state;
-
-    if matches!(
-        current_servicing_state,
-        ServicingState::AbUpdateHealthCheckFailed | ServicingState::CleanInstallHealthCheckFailed
-    ) {
-        // If we are in a health check rollback state, we've rolled back to
-        // previous partition so just update the Host Status to Provisioned.
-        return Ok(BootValidationResult::CorrectBootProvisioned);
-    }
+    let expected_ab_active_volume = match current_servicing_state {
+        // For *Finalized, the expected active volume is the one set in Host Status
+        ServicingState::AbUpdateFinalized | ServicingState::CleanInstallFinalized => {
+            datastore.host_status().ab_active_volume
+        }
+        // For AbUpdateHealthCheckFailed, the expected active volume is the opposite of the one
+        // set in Host Status
+        ServicingState::AbUpdateHealthCheckFailed => {
+            match datastore.host_status().ab_active_volume {
+                Some(AbVolumeSelection::VolumeB) => Some(AbVolumeSelection::VolumeA),
+                Some(AbVolumeSelection::VolumeA) => Some(AbVolumeSelection::VolumeB),
+                None => None,
+            }
+        }
+        // For any other state, this function should not have been called
+        _ => {
+            return Err(TridentError::new(InternalError::UnexpectedServicingState {
+                state: current_servicing_state,
+            }));
+        }
+    };
 
     let servicing_type = match current_servicing_state {
         ServicingState::AbUpdateFinalized | ServicingState::AbUpdateHealthCheckFailed => {
             ServicingType::AbUpdate
         }
-        ServicingState::CleanInstallFinalized | ServicingState::CleanInstallHealthCheckFailed => {
-            ServicingType::CleanInstall
-        }
+        ServicingState::CleanInstallFinalized => ServicingType::CleanInstall,
         _ => ServicingType::NoActiveServicing,
     };
 
@@ -66,7 +76,7 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
         spec: datastore.host_status().spec.clone(),
         spec_old: datastore.host_status().spec_old.clone(),
         servicing_type,
-        ab_active_volume: datastore.host_status().ab_active_volume,
+        ab_active_volume: expected_ab_active_volume,
         partition_paths: datastore.host_status().partition_paths.clone(),
         disk_uuids: datastore.host_status().disk_uuids.clone(),
         install_index: datastore.host_status().install_index,
@@ -84,65 +94,30 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
     let expected_root_path =
         get_expected_root_device_path(&ctx).message("Failed to get expected root device path")?;
 
-    if compare_root_device_paths(current_root_path.clone(), expected_root_path.clone())
-        .message("Host failed to boot from expected root device")?
-    {
+    // Check that the machine booted from the expected root device
+    let booted_to_expected_root =
+        compare_root_device_paths(current_root_path.clone(), expected_root_path.clone())
+            .message("Host failed to boot from expected root device")?;
+    if booted_to_expected_root {
         info!("Host successfully booted from updated target OS image");
+    }
 
-        // Execute update-check scripts, if one fails, trigger rollback
-        match HooksSubsystem::default().execute_health_checks(&ctx) {
-            Ok(()) => {}
-            Err(e) => {
-                info!("Failed to execute update check scripts: {e:?}");
+    // Only run extended validation (health checks, boot order, encryption) if
+    // we are validating a *Finalized state and the current boot is from the
+    // expected root.
+    //
+    // If the current servicing state is AbUpdateHealthCheckFailed, we are only
+    // validating the rollback has booted from the expected root.
+    let extended_validation_for_finalized = booted_to_expected_root
+        && current_servicing_state != ServicingState::AbUpdateHealthCheckFailed;
 
-                // Update host status to reflect health check failure
-                datastore.with_host_status(|host_status| {
-                    host_status.servicing_state = match servicing_type {
-                        ServicingType::AbUpdate => ServicingState::AbUpdateHealthCheckFailed,
-                        ServicingType::CleanInstall => {
-                            ServicingState::CleanInstallHealthCheckFailed
-                        }
-                        // Shouldn't happen because of previous checks
-                        _ => current_servicing_state,
-                    };
-                })?;
-
-                // Generate the new log filename
-                let new_commit_failure_log_filename = format!(
-                    "trident-update-check-failure-{}.log",
-                    Utc::now().format("%Y%m%dT%H%M%SZ")
-                );
-
-                // Fetch the directory path from the full datastore path
-                let datastore_path = datastore.host_status().spec.trident.datastore_path.clone();
-                if let Some(datastore_dir) = datastore_path.parent() {
-                    let new_commit_failure_log_path: PathBuf =
-                        datastore_dir.join(new_commit_failure_log_filename);
-
-                    debug!(
-                        "Persisting Trident update check failure to '{}' ",
-                        new_commit_failure_log_path.display()
-                    );
-
-                    // Copy the background log file to the new location
-                    if let Err(log_error) =
-                        fs::write(&new_commit_failure_log_path, format!("{e:?}"))
-                    {
-                        warn!(
-                            "Failed to persist Trident update check failure to '{}': {}",
-                            new_commit_failure_log_path.display(),
-                            log_error
-                        );
-                    } else {
-                        debug!(
-                            "Successfully persisted Trident update check failure to '{}'",
-                            new_commit_failure_log_path.display()
-                        );
-                    }
-                }
-                return Ok(BootValidationResult::CorrectBootInvalid(e));
-            }
-        };
+    if extended_validation_for_finalized {
+        // Run health checks to ensure the system is in the desired state
+        let health_check_status =
+            run_health_checks(&ctx, datastore, current_servicing_state, servicing_type)?;
+        if let BootValidationResult::CorrectBootInvalid(err) = health_check_status {
+            return Ok(BootValidationResult::CorrectBootInvalid(err));
+        }
 
         // If it's virtdeploy, after confirming that we have booted into the correct image, we need
         // to update the `BootOrder` to boot from the correct image next time.
@@ -206,12 +181,18 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
             expected_device_path: expected_root_path.to_string_lossy().to_string(),
         }));
     } else {
-        // If Trident was executing an A/B update, need to re-set the Host Status.
-        datastore.with_host_status(|host_status| {
-            host_status.spec = host_status.spec_old.clone();
-            host_status.spec_old = Default::default();
-            host_status.servicing_state = ServicingState::Provisioned;
-        })?;
+        // If Trident was attempting to rollback an A/B update because a health check failed and
+        // are in the wrong partition, return error without changing the host status.
+        //
+        // Otherwise, for other states, reset the host status to Provisioned and return error.
+        if datastore.host_status().servicing_state != ServicingState::AbUpdateHealthCheckFailed {
+            // If Trident was executing an A/B update, need to re-set the Host Status.
+            datastore.with_host_status(|host_status| {
+                host_status.spec = host_status.spec_old.clone();
+                host_status.spec_old = Default::default();
+                host_status.servicing_state = ServicingState::Provisioned;
+            })?;
+        }
 
         return Err(TridentError::new(ServicingError::AbUpdateRebootCheck {
             root_device_path: current_root_path.to_string_lossy().to_string(),
@@ -252,6 +233,74 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
         };
     })?;
 
+    Ok(BootValidationResult::CorrectBootProvisioned)
+}
+
+fn run_health_checks(
+    ctx: &EngineContext,
+    datastore: &mut DataStore,
+    current_servicing_state: ServicingState,
+    servicing_type: ServicingType,
+) -> Result<BootValidationResult, TridentError> {
+    match current_servicing_state {
+        ServicingState::AbUpdateFinalized | ServicingState::CleanInstallFinalized => {
+            // If health check previously failed, need to re-run the health checks
+            // Execute update-check scripts, if one fails, trigger rollback
+            match HooksSubsystem::default().execute_health_checks(ctx) {
+                Ok(()) => {}
+                Err(e) => {
+                    info!("Failed to execute update check scripts: {e:?}");
+
+                    // Update host status to reflect health check failure
+                    datastore.with_host_status(|host_status| {
+                        host_status.servicing_state = match servicing_type {
+                            ServicingType::AbUpdate => ServicingState::AbUpdateHealthCheckFailed,
+                            ServicingType::CleanInstall => ServicingState::NotProvisioned,
+                            // Shouldn't happen because of previous checks
+                            _ => current_servicing_state,
+                        };
+                    })?;
+
+                    // Generate the new log filename
+                    let new_commit_failure_log_filename = format!(
+                        "trident-update-check-failure-{}.log",
+                        Utc::now().format("%Y%m%dT%H%M%SZ")
+                    );
+
+                    // Fetch the directory path from the full datastore path
+                    let datastore_path =
+                        datastore.host_status().spec.trident.datastore_path.clone();
+                    if let Some(datastore_dir) = datastore_path.parent() {
+                        let new_commit_failure_log_path: PathBuf =
+                            datastore_dir.join(new_commit_failure_log_filename);
+
+                        debug!(
+                            "Persisting Trident update check failure to '{}' ",
+                            new_commit_failure_log_path.display()
+                        );
+
+                        // Copy the background log file to the new location
+                        if let Err(log_error) =
+                            fs::write(&new_commit_failure_log_path, format!("{e:?}"))
+                        {
+                            warn!(
+                                "Failed to persist Trident update check failure to '{}': {}",
+                                new_commit_failure_log_path.display(),
+                                log_error
+                            );
+                        } else {
+                            debug!(
+                                "Successfully persisted Trident update check failure to '{}'",
+                                new_commit_failure_log_path.display()
+                            );
+                        }
+                    }
+                    return Ok(BootValidationResult::CorrectBootInvalid(e));
+                }
+            };
+        }
+        _ => {}
+    }
     Ok(BootValidationResult::CorrectBootProvisioned)
 }
 

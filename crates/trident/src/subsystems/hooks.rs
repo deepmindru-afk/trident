@@ -22,7 +22,7 @@ use trident_api::{
         ROOT_MOUNT_POINT_PATH,
     },
     error::{InvalidInputError, ReportError, ServicingError, TridentError},
-    status::ServicingType,
+    status::{ServicingState, ServicingType},
 };
 
 use crate::engine::{EngineContext, Subsystem};
