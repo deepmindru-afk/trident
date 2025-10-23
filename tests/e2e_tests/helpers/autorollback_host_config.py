@@ -13,11 +13,11 @@ def add_health_checks(host_config_path):
 
     host_config["health"]["checks"].append({})
     host_config["health"]["checks"][-1]["content"] = "exit 1"
-    host_config["health"]["checks"][-1]["run_on"] = ["ab-update"]
+    host_config["health"]["checks"][-1]["runOn"] = ["ab-update"]
     host_config["health"]["checks"][-1]["name"] = "invoke-rollback-from-script"
 
     host_config["health"]["checks"].append({})
-    host_config["health"]["checks"][-1]["run_on"] = ["ab-update"]
+    host_config["health"]["checks"][-1]["runOn"] = ["ab-update"]
     host_config["health"]["checks"][-1]["timeoutSeconds"] = 30
     host_config["health"]["checks"][-1]["systemdServices"] = [
         "non-existent-service1",
