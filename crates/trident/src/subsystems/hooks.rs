@@ -245,7 +245,7 @@ impl HooksSubsystem {
                     services: services_list,
                     timeout_seconds: check.timeout_seconds,
                     last_error: last_error
-                        .map(|e| format!("{:?}", e))
+                        .map(|e| format!("{e:?}"))
                         .unwrap_or_else(|| "No status retrieved".into()),
                 }));
             }
@@ -404,7 +404,7 @@ impl HooksSubsystem {
                         {
                             loop_script_errors.lock().unwrap().push(ScriptError {
                                 script_name: systemd_check.name,
-                                error_message: format!("{:?}", err),
+                                error_message: format!("{err:?}"),
                             });
                         }
                     }
@@ -416,7 +416,7 @@ impl HooksSubsystem {
                         ) {
                             loop_script_errors.lock().unwrap().push(ScriptError {
                                 script_name: inner_script.name,
-                                error_message: format!("{:?}", err),
+                                error_message: format!("{err:?}"),
                             });
                         }
                     }
