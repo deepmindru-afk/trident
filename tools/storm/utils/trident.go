@@ -144,24 +144,20 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
 	}
 	defer session.Close()
 
-	tridentGetOutput, err := session.Output("sudo trident get")
-	// if err != nil {
-	// 	return fmt.Errorf("failed to get volumes: %w", err)
-	// }
-	tridentGetOutputStr := string(tridentGetOutput)
-	logrus.Debugf("Host Status (err=%+v):\n%s", err, tridentGetOutputStr)
-
 	cmd := fmt.Sprintf("sudo systemctl status %s --no-pager", serviceName)
 	logrus.Debugf("Running command: %s", cmd)
 
 	output, err := session.CombinedOutput(cmd)
 	if err != nil {
+		logrus.Debugf("Received output:\n %s", output)
 		// We expect systemctl to return an exit code of 3 when the service is
 		// not running. This is expected after trident is finished. It is NOT an
 		// error!
 		if exitErr, ok := err.(*ssh.ExitError); !(ok && exitErr.ExitStatus() == 3) {
+			tridentGetOutput, tridentGetErr := session.CombinedOutput("sudo trident get")
+			logrus.Debugf("Host Status (err=%+v):\n%s", tridentGetErr, string(tridentGetOutput))
+
 			// This is an unknown error, return it.
-			logrus.Debugf("Received output:\n %s", output)
 			return fmt.Errorf("failed to check Trident service status: %w", err)
 		}
 	}
