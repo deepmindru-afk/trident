@@ -300,6 +300,12 @@ pub enum ServicingError {
         expected_device_path: String,
     },
 
+    #[error(
+        "A/B update health check failed and rollback booted from the expected device \
+        '{expected_device_path}'"
+    )]
+    AbUpdateHealthCheckCommitCheck { expected_device_path: String },
+
     #[error("Failed to bind encryption to pcrlock policy")]
     BindEncryptionToPcrlockPolicy,
 
