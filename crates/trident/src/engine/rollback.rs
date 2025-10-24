@@ -194,7 +194,11 @@ fn commit_finalized_on_expected_root(
     let health_check_status =
         run_health_checks(ctx, datastore, current_servicing_state, servicing_type)?;
     if let BootValidationResult::CorrectBootInvalid(err) = health_check_status {
-        return Ok(BootValidationResult::CorrectBootInvalid(err));
+        match servicing_type {
+            ServicingType::AbUpdate => return Ok(BootValidationResult::CorrectBootInvalid(err)),
+            ServicingType::CleanInstall => return Err(err),
+            _ => {}
+        };
     }
 
     // If it's virtdeploy, after confirming that we have booted into the correct image, we need
