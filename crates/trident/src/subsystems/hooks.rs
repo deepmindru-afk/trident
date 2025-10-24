@@ -223,21 +223,13 @@ impl HooksSubsystem {
         Ok(())
     }
 
-    fn run_systemd_check(
-        &self,
-        check: &SystemdCheck,
-        target_root: &Path,
-    ) -> Result<(), TridentError> {
+    fn run_systemd_check(&self, check: &SystemdCheck) -> Result<(), TridentError> {
         let start_time = Instant::now();
         let timeout_duration = Duration::from_secs(check.timeout_seconds as u64);
         let mut last_error = None;
 
         let services_list = check.systemd_services.join(" ");
-        debug!(
-            "Checking status of systemd service(s) '{}' in target root '{}'",
-            &services_list,
-            target_root.display()
-        );
+        debug!("Checking status of systemd service(s) '{}'", &services_list);
 
         for _i in 0.. {
             if start_time.elapsed() >= timeout_duration {
@@ -252,6 +244,7 @@ impl HooksSubsystem {
 
             let status = Dependency::Systemctl
                 .cmd()
+                .env("SYSTEMD_IGNORE_CHROOT", "true")
                 .arg("status")
                 .args(&check.systemd_services)
                 .output();
@@ -384,27 +377,29 @@ impl HooksSubsystem {
     /// This function will be called outside the standard subsystem flow
     /// before Trident commits a target OS.
     pub fn execute_health_checks(&mut self, ctx: &EngineContext) -> Result<(), TridentError> {
-        if ctx.servicing_type != ServicingType::AbUpdate {
-            return Ok(());
-        }
-        if !ctx.spec.health.checks.is_empty() {
-            debug!("Running update-check scripts");
+        let health_checks = ctx
+            .spec
+            .health
+            .checks
+            .clone()
+            .into_iter()
+            .filter(|check| check.should_run(ctx.servicing_type))
+            .collect::<Vec<_>>();
+        if !health_checks.is_empty() {
+            debug!("Running health check scripts");
         }
 
         // Shared vector to collect script errors from threads
         let script_errors = Arc::new(Mutex::new(Vec::new()));
-        // Create parallel update-check threads within a scope, the
+        // Create parallel health-check threads within a scope, the
         // threads will all be joined before the scope ends.
-        let health_checks = ctx.spec.health.checks.clone();
         thread::scope(|s| {
             for health_check in health_checks {
                 let subsystem = &self;
                 let loop_script_errors = script_errors.clone();
                 s.spawn(move || match health_check {
                     Check::SystemdCheck(systemd_check) => {
-                        if let Err(err) = subsystem
-                            .run_systemd_check(&systemd_check, Path::new(ROOT_MOUNT_POINT_PATH))
-                        {
+                        if let Err(err) = subsystem.run_systemd_check(&systemd_check) {
                             loop_script_errors.lock().unwrap().push(ScriptError {
                                 script_name: systemd_check.name,
                                 error_message: format!("{err:?}"),
