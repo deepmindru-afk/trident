@@ -232,8 +232,16 @@ steps:
       artifactName: "junit_for_trident_ab_update_B"
 
   - bash: |
-      echo "##vso[task.setvariable variable=testAutoRollback]true"
-      echo 'Test auto-rollback'
+      if [ "${{ parameters.deploymentEnvironment }}" == "virtualMachine" ]; then
+        echo "Test auto-rollback for all VM tests that do AB Update"
+        echo "##vso[task.setvariable variable=testAutoRollback]true"
+      fi
+
+      if [ "${{ parameters.deploymentEnvironment }}" == "bareMetal" ] && 
+         [ "${{ parameters.buildPurpose }}" == "weekly" ]; then
+        echo "Test auto-rollback for BM tests that do AB Update for Full Validation"
+        echo "##vso[task.setvariable variable=testAutoRollback]true"
+      fi
     displayName: "Determine whether to test auto-rollback"
 
   - bash: |
