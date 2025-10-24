@@ -258,7 +258,10 @@ impl HooksSubsystem {
             match status {
                 Ok(output) => match output.check() {
                     Ok(_) => {
-                        info!("Service(s) '{services_list}' are active/running");
+                        info!(
+                            "Service(s) '{services_list}' are active/running: {}",
+                            output.output_report()
+                        );
                         break;
                     }
                     Err(e) => {
