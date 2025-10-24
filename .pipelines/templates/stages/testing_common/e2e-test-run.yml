@@ -137,9 +137,9 @@ steps:
         PROXY_ARG="--proxy HTTPS_PROXY=${{ parameters.httpsProxy }}"
       fi
 
-      SKIP_SERVICE_CHECK_ARG=""
+      EXPECT_COMMIT_FAILURE_ARG=""
       if [ ${{ parameters.tridentConfigurationName }} == 'uefifallback' ]; then
-        SKIP_SERVICE_CHECK_ARG="--skip-service-check"
+        EXPECT_COMMIT_FAILURE_ARG="--expect-failed-commit"
       fi
 
       echo "Running script to stage and finalize A/B update..."
@@ -153,7 +153,7 @@ steps:
           --stage-ab-update \
           --finalize-ab-update \
           $PROXY_ARG \
-          $SKIP_SERVICE_CHECK_ARG
+          $EXPECT_COMMIT_FAILURE_ARG
 
       current_version=$(echo $(version))
       new_version=$((current_version + 1))
