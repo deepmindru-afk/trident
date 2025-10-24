@@ -293,7 +293,8 @@ fn run_health_checks(
                 Ok(()) => {}
                 Err(e) => {
                     info!("Failed to execute update check scripts: {e:?}");
-
+                    let structured_error =
+                        serde_yaml::to_value(&e).structured(InternalError::SerializeError)?;
                     // Update host status to reflect health check failure
                     datastore.with_host_status(|host_status| {
                         host_status.servicing_state = match servicing_type {
@@ -302,6 +303,7 @@ fn run_health_checks(
                             // Shouldn't happen because of previous checks
                             _ => current_servicing_state,
                         };
+                        host_status.last_error = Some(structured_error);
                     })?;
 
                     // Generate the new log filename
