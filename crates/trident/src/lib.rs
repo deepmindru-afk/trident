@@ -279,12 +279,17 @@ impl Trident {
     where
         F: FnOnce(&mut DataStore) -> Result<T, TridentError>,
     {
-        datastore.with_host_status(|host_status| {
-            if let Some(e) = host_status.last_error.take() {
-                warn!("Previously encountered error: {e:?}");
-                info!("Clearing last error");
-            }
-        })?;
+        // AbUpdateHealthCheckFailed is a special case where we would like
+        // to preserve the last error across any recovery. This aids in
+        // surfacing the original error.
+        if datastore.host_status().servicing_state != ServicingState::AbUpdateHealthCheckFailed {
+            datastore.with_host_status(|host_status| {
+                if let Some(e) = host_status.last_error.take() {
+                    warn!("Previously encountered error: {e:?}");
+                    info!("Clearing last error");
+                }
+            })?;
+        }
 
         match f(datastore) {
             Ok(t) => Ok(t),

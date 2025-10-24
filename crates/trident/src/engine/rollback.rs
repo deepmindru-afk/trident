@@ -114,11 +114,14 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
                 servicing_type,
             );
         }
+        //
+        // Every case below will return an error.
+        //
         (false, ServicingState::AbUpdateHealthCheckFailed) => {
             // For AB Update, when health checks previously failed and not
             // booting from expected root (the servicing OS), report error
             // and leave host status alone
-            return Err(TridentError::new(ServicingError::CleanInstallRebootCheck {
+            return Err(TridentError::new(ServicingError::AbUpdateRebootCheck {
                 root_device_path: current_root_path.to_string_lossy().to_string(),
                 expected_device_path: expected_root_path.to_string_lossy().to_string(),
             }));
