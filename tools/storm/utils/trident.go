@@ -101,7 +101,7 @@ func LoadTridentContainer(client *ssh.Client) error {
 	return nil
 }
 
-func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout time.Duration, expectFailedService bool) error {
+func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout time.Duration, expectSuccessfulService bool) error {
 	if client == nil {
 		return fmt.Errorf("SSH client is nil")
 	}
@@ -121,7 +121,7 @@ func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout tim
 		time.Second*5,
 		func(attempt int) (*bool, error) {
 			logrus.Infof("Checking Trident service status (attempt %d)", attempt)
-			reconnect, err := checkTridentServiceInner(client, serviceName, expectFailedService)
+			reconnect, err := checkTridentServiceInner(client, serviceName, expectSuccessfulService)
 			if reconnect != nil && *reconnect {
 				return reconnect, nil
 			}
