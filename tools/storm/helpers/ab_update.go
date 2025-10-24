@@ -27,6 +27,7 @@ type AbUpdateHelper struct {
 		FinalizeAbUpdate     bool   `short:"f" help:"Controls whether A/B update should be finalized."`
 		Proxy                string `help:"Proxy address. Input should include the env var name, i.e. HTTPS_PROXY=http://0.0.0.0."`
 		ForcedRollback       bool   `help:"Controls whether this test includes a forced auto-rollback during A/B update." default:"false"`
+		ExpectFailedCommit   bool   `help:"Controls whether this test treats failed commits as successful." default:"false"`
 	}
 
 	client *ssh.Client
@@ -346,8 +347,8 @@ func (h *AbUpdateHelper) checkTridentService(tc storm.TestCase) error {
 			logrus.Infof("SSH dial to '%s' succeeded", h.args.SshCliSettings.FullHost())
 
 			// Forced rollback will result in Trident service returning an error status
-			expectSuccessfulService := !h.args.ForcedRollback
-			err = utils.CheckTridentService(client, h.args.Env, h.args.TimeoutDuration(), expectSuccessfulService)
+			expectSuccessfulCommit := !h.args.ExpectFailedCommit
+			err = utils.CheckTridentService(client, h.args.Env, h.args.TimeoutDuration(), expectSuccessfulCommit)
 			if err != nil {
 				logrus.Warnf("Trident service is not in expected state: %s", err)
 				return nil, err

@@ -101,7 +101,7 @@ func LoadTridentContainer(client *ssh.Client) error {
 	return nil
 }
 
-func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout time.Duration, expectSuccessfulService bool) error {
+func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout time.Duration, expectSuccessfulCommit bool) error {
 	if client == nil {
 		return fmt.Errorf("SSH client is nil")
 	}
@@ -121,7 +121,7 @@ func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout tim
 		time.Second*5,
 		func(attempt int) (*bool, error) {
 			logrus.Infof("Checking Trident service status (attempt %d)", attempt)
-			reconnect, err := checkTridentServiceInner(client, serviceName, expectSuccessfulService)
+			reconnect, err := checkTridentServiceInner(client, serviceName, expectSuccessfulCommit)
 			if reconnect != nil && *reconnect {
 				return reconnect, nil
 			}
@@ -143,7 +143,7 @@ func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout tim
 	return nil
 }
 
-func checkTridentServiceInner(client *ssh.Client, serviceName string, expectSuccessfulService bool) (*bool, error) {
+func checkTridentServiceInner(client *ssh.Client, serviceName string, expectSuccessfulCommit bool) (*bool, error) {
 	reconnectNeeded := false
 	session, err := client.NewSession()
 	if err != nil {
@@ -174,7 +174,7 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string, expectSucc
 
 	logrus.Debugf("Trident service status:\n%s", outputStr)
 
-	if expectSuccessfulService {
+	if expectSuccessfulCommit {
 		if !strings.Contains(outputStr, "Active: inactive (dead)") {
 			return &reconnectNeeded, fmt.Errorf("expected to find 'Active: inactive (dead)' in Trident service status")
 		}
@@ -197,15 +197,15 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string, expectSucc
 		return &reconnectNeeded, fmt.Errorf("expected to find 'Main PID:' in Trident service status")
 	}
 
-	serviceSuccessfulExit := strings.Contains(mainPidLine, "(code=exited, status=0/SUCCESS")
-	if expectSuccessfulService {
-		if !serviceSuccessfulExit {
+	commitSuccessfulExit := strings.Contains(mainPidLine, "(code=exited, status=0/SUCCESS")
+	if expectSuccessfulCommit {
+		if !commitSuccessfulExit {
 			return &reconnectNeeded, fmt.Errorf("did not expect to find '(code=exited, status=0/SUCCESS)' in Trident service status")
 		} else {
 			logrus.Info("Trident service ran and exited successfully")
 		}
 	} else {
-		if serviceSuccessfulExit {
+		if commitSuccessfulExit {
 			return &reconnectNeeded, fmt.Errorf("expected NOT to find '(code=exited, status=0/SUCCESS)' in Trident service status")
 		} else {
 			logrus.Info("Trident service ran as expected and exited with non-zero status")

@@ -276,6 +276,7 @@ steps:
           --stage-ab-update \
           --finalize-ab-update \
           --forced-rollback \
+          --expect-failed-commit \
           $PROXY_ARG
 
       # Un-set the 'x' flag to avoid errors.
