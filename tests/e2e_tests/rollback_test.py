@@ -27,10 +27,12 @@ def test_rollback(
     listLogsResult = connection.run(
         "sudo ls /var/lib/trident/trident-update-check-failure-*.log"
     )
+    print(f"Log files: {listLogsResult.stdout.strip()}")
     # There should be 1 log file
     assert len(listLogsResult.stdout.strip().splitlines()) == 1
     # Get log file contents
     logResultContentResult = connection.run(f"sudo cat {listLogsResult.stdout.strip()}")
+    print(f"Log file contents:\n{logResultContentResult.stdout}")
     # Verify that script failure message is in log file
     assert (
         "Script 'invoke-rollback-from-script' failed" in logResultContentResult.stdout
