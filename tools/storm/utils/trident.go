@@ -116,12 +116,15 @@ func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout tim
 		return fmt.Errorf("unsupported environment: %s", env)
 	}
 
-	_, err := Retry(
+	reconnectNeeded, err := Retry(
 		timeout,
 		time.Second*5,
 		func(attempt int) (*bool, error) {
 			logrus.Infof("Checking Trident service status (attempt %d)", attempt)
-			err := checkTridentServiceInner(client, serviceName)
+			reconnect, err := checkTridentServiceInner(client, serviceName)
+			if reconnect != nil && *reconnect {
+				return reconnect, nil
+			}
 			if err != nil {
 				logrus.Warnf("Trident service is not in expected state: %s", err)
 				return nil, err
@@ -130,6 +133,9 @@ func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout tim
 			return nil, nil
 		},
 	)
+	if reconnectNeeded != nil && *reconnectNeeded {
+		return fmt.Errorf("SSH connection needs to be re-established")
+	}
 	if err != nil {
 		return fmt.Errorf("trident service is not in expected state: %w", err)
 	}
@@ -137,10 +143,12 @@ func CheckTridentService(client *ssh.Client, env TridentEnvironment, timeout tim
 	return nil
 }
 
-func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
+func checkTridentServiceInner(client *ssh.Client, serviceName string) (*bool, error) {
+	reconnectNeeded := false
 	session, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("failed to create SSH session: %w", err)
+		reconnectNeeded = true
+		return &reconnectNeeded, fmt.Errorf("failed to create SSH session: %w", err)
 	}
 	defer session.Close()
 
@@ -158,7 +166,7 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
 			logrus.Debugf("Host Status (err=%+v):\n%s", tridentGetErr, string(tridentGetOutput))
 
 			// This is an unknown error, return it.
-			return fmt.Errorf("failed to check Trident service status: %w", err)
+			return &reconnectNeeded, fmt.Errorf("failed to check Trident service status: %w", err)
 		}
 	}
 
@@ -167,7 +175,7 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
 	logrus.Debugf("Trident service status:\n%s", outputStr)
 
 	if !strings.Contains(outputStr, "Active: inactive (dead)") {
-		return fmt.Errorf("expected to find 'Active: inactive (dead)' in Trident service status")
+		return &reconnectNeeded, fmt.Errorf("expected to find 'Active: inactive (dead)' in Trident service status")
 	}
 
 	mainPidLine := ""
@@ -180,14 +188,14 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string) error {
 	}
 
 	if mainPidLine == "" {
-		return fmt.Errorf("expected to find 'Main PID:' in Trident service status")
+		return &reconnectNeeded, fmt.Errorf("expected to find 'Main PID:' in Trident service status")
 	}
 
 	if !strings.Contains(mainPidLine, "(code=exited, status=0/SUCCESS") {
-		return fmt.Errorf("expected to find '(code=exited, status=0/SUCCESS)' in Trident service status")
+		return &reconnectNeeded, fmt.Errorf("expected to find '(code=exited, status=0/SUCCESS)' in Trident service status")
 	}
 
 	logrus.Info("Trident service ran successfully")
 
-	return nil
+	return &reconnectNeeded, nil
 }
