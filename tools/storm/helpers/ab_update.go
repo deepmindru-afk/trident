@@ -345,28 +345,9 @@ func (h *AbUpdateHelper) checkTridentService(tc storm.TestCase) error {
 
 			logrus.Infof("SSH dial to '%s' succeeded", h.args.SshCliSettings.FullHost())
 
-			// if h.args.ForcedRollback {
-			// 	logrus.Infof("Forced rollback is expected, skip service check as commit should fail")
-			// 	// Check for rollback
-			// 	out, err := utils.InvokeTrident(h.args.Env, client, h.args.Proxy, "get status")
-			// 	if err != nil {
-			// 		return nil, fmt.Errorf("failed to invoke Trident: %w", err)
-			// 	}
-			// 	if err := out.Check(); err != nil {
-			// 		return nil, fmt.Errorf("failed to get host status: %w", err)
-			// 	}
-			// 	logrus.Debugf("Trident stdout:\n%s", out.Stdout)
-			// 	logrus.Debugf("Trident stderr:\n%s", out.Stderr)
-
-			// 	var hostStatus map[string]interface{}
-			// 	err = yaml.Unmarshal([]byte(out.Stdout), &hostStatus)
-			// 	if err != nil {
-			// 		return nil, fmt.Errorf("failed to unmarshal YAML: %w", err)
-			// 	}
-			// 	return nil, nil
-			// }
-
-			err = utils.CheckTridentService(client, h.args.Env, h.args.TimeoutDuration())
+			// Forced rollback will result in Trident service returning an error status
+			expectSuccessfulService := !h.args.ForcedRollback
+			err = utils.CheckTridentService(client, h.args.Env, h.args.TimeoutDuration(), expectSuccessfulService)
 			if err != nil {
 				logrus.Warnf("Trident service is not in expected state: %s", err)
 				return nil, err
