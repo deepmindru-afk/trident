@@ -282,20 +282,29 @@ impl Trident {
         // AbUpdateHealthCheckFailed is a special case where we would like
         // to preserve the last error across any recovery. This aids in
         // surfacing the original error.
-        if datastore.host_status().servicing_state != ServicingState::AbUpdateHealthCheckFailed {
-            datastore.with_host_status(|host_status| {
-                if let Some(e) = host_status.last_error.take() {
-                    warn!("Previously encountered error: {e:?}");
-                    info!("Clearing last error");
-                }
-            })?;
-        }
+        let last_error_to_preserve = if datastore.host_status().servicing_state
+            == ServicingState::AbUpdateHealthCheckFailed
+        {
+            datastore.host_status().last_error.clone()
+        } else {
+            None
+        };
+
+        datastore.with_host_status(|host_status| {
+            if let Some(e) = host_status.last_error.take() {
+                warn!("Previously encountered error: {e:?}");
+                info!("Clearing last error");
+            }
+        })?;
 
         match f(datastore) {
             Ok(t) => Ok(t),
             Err(e) => {
                 // Record error in datastore.
-                let error = serde_yaml::to_value(&e).structured(InternalError::SerializeError)?;
+                let error = match last_error_to_preserve {
+                    Some(err) => err,
+                    None => serde_yaml::to_value(&e).structured(InternalError::SerializeError)?,
+                };
                 if let Err(e2) =
                     datastore.with_host_status(|status| status.last_error = Some(error))
                 {
