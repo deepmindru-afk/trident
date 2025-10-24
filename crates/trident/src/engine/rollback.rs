@@ -58,7 +58,7 @@ pub fn validate_boot(datastore: &mut DataStore) -> Result<BootValidationResult, 
         // For any other state, this function should not have been called
         state => {
             return Err(TridentError::new(InternalError::UnexpectedServicingState {
-                state: state,
+                state,
             }));
         }
     };
@@ -231,7 +231,7 @@ fn commit_finalized_on_expected_root(
 
             // Get UKI and bootloader binaries for .pcrlock file generation
             let (uki_binaries, bootloader_binaries) =
-                encryption::get_binary_paths_pcrlock(&ctx, pcrs, None)
+                encryption::get_binary_paths_pcrlock(ctx, pcrs, None)
                     .structured(ServicingError::GetBinaryPathsForPcrlockEncryption)?;
 
             // Generate a pcrlock policy
