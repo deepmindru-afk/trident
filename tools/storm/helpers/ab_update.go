@@ -346,7 +346,8 @@ func (h *AbUpdateHelper) checkTridentService(tc storm.TestCase) error {
 
 			logrus.Infof("SSH dial to '%s' succeeded", h.args.SshCliSettings.FullHost())
 
-			// Forced rollback will result in Trident service returning an error status
+			// Enable tests to handle success and failure of commit service
+			// depending on configuration
 			expectSuccessfulCommit := !h.args.ExpectFailedCommit
 			err = utils.CheckTridentService(client, h.args.Env, h.args.TimeoutDuration(), expectSuccessfulCommit)
 			if err != nil {
