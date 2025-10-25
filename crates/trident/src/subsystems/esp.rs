@@ -189,8 +189,8 @@ fn copy_file_artifacts(
     }
 
     // Call helper func to copy boot files from temp_mount_dir to esp_dir_path
-    let grub_noprefix = copy_boot_files(temp_mount_dir, &esp_dir_path, boot_files.clone())
-        .context(format!(
+    let grub_noprefix =
+        copy_boot_files(temp_mount_dir, &esp_dir_path, boot_files).context(format!(
             "Failed to copy boot files from directory {} to directory {}",
             temp_mount_dir.display(),
             esp_dir_path.display()
