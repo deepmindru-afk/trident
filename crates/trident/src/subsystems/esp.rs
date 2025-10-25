@@ -11,7 +11,6 @@ use tempfile::{NamedTempFile, TempDir};
 
 use osutils::{
     bootloaders::{BOOT_EFI, GRUB_EFI, GRUB_NOPREFIX_EFI},
-    dependencies::Dependency,
     filesystems::MountFileSystemType,
     mount::{self, MountGuard},
     path,
