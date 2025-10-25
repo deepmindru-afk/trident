@@ -231,7 +231,7 @@ fn configure_uefi_fallback(ctx: &EngineContext, mount_point: &Path) -> Result<()
                     debug!("Clean install detected. No action needed for UEFI rollback mode.");
                 }
                 trident_api::status::ServicingType::AbUpdate => {
-                    // For update, find the servicing os boot files and copy them to EFI/BOOT/.
+                    // For update, find the servicing OS boot files and copy them to EFI/BOOT/.
                     let active_boot_esp_dir_name = boot::make_esp_dir_name(
                         ctx.install_index,
                         match ctx.ab_active_volume {
