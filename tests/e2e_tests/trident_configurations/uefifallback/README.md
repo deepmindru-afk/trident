@@ -11,7 +11,7 @@ Choose one of the following modes by setting the `FALLBACK_MODE` variable in the
 #   FALLBACK_MODE="rollback"
 # Expectation: Broken boot
 #   FALLBACK_MODE="none"
-FALLBACK_MODE="rollforward"
+FALLBACK_MODE="rollback"
 ```
 
 ## Build RPMs, Images, and tools
@@ -23,15 +23,16 @@ TEST_IMAGES_FOLDER="../test-images"
 # Build Trident RPMs
 make bin/trident-rpms.tar.gz
 make -C $TEST_IMAGES_FOLDER copy-trident-rpms
-# Build install (regular.cosi) and update images (regular-2.cosi)
+# Build install (regular.cosi) and update images (regular_v2.cosi)
 mkdir -p artifacts/test-image
 make -C $TEST_IMAGES_FOLDER trident-testimage
 mv $TEST_IMAGES_FOLDER/build/trident-testimage.cosi artifacts/test-image/regular.cosi
 make -C $TEST_IMAGES_FOLDER trident-testimage
-cp $TEST_IMAGES_FOLDER/build/trident-testimage.cosi artifacts/test-image/regular-2.cosi
+cp $TEST_IMAGES_FOLDER/build/trident-testimage.cosi artifacts/test-image/regular_v2.cosi
 
 make tools/netlaunch
 make tools/netlisten
+make bin/storm-trident
 ```
 
 ## Create Trident Host Configuration
@@ -43,8 +44,9 @@ sed -i "s|sshPublicKeys: \[\]|sshPublicKeys: \[\"$(cat ~/.ssh/id_rsa.pub)\"\]|" 
 sed -i 's|/dev/disk/by-path/pci-0000:00:1f.2-ata-2|/dev/sda|' input/trident.yaml
 sed -i 's|/dev/disk/by-path/pci-0000:00:1f.2-ata-3|/dev/sdb|' input/trident.yaml
 sed -i "s|uefiFallback: .*|uefiFallback: $FALLBACK_MODE|" input/trident.yaml
-echo "Using trident configuration:"
-echo -e "$(cat input/trident.yaml)\n"
+
+./bin/trident validate ./input/trident.yaml
+echo "Valid host configuration? $?"
 ```
 
 ## Create test VM
@@ -60,44 +62,46 @@ make tools/virt-deploy
 make run-netlaunch
 ```
 
-## Create Update Trident Host Configuration
+## Run update and validate
 
 ``` bash
+# Get VM IP address
 VM_IP=$(virsh domifaddr virtdeploy-vm-0 | grep ipv4 | awk '{print $4}' |  cut -d "/" -f1)
 echo "VM_IP: $VM_IP"
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa testing-user@$VM_IP "trident get configuration" > input/trident-2.yaml
-sed -i 's|regular.cosi|regular-2.cosi|' ./input/trident-2.yaml
-sed -i 's|^  sha384: .*|  sha384: ignored|' ./input/trident-2.yaml
-echo "Using updated trident configuration:"
-echo -e "$(cat input/trident-2.yaml)\n"
-```
-
-## Start netlisten and run update
-
-``` bash
-NETLAUNCH_PORT=$(cat input/trident-2.yaml | grep image -A 2 | grep url | cut -d "/" -f 3 | cut -d ":" -f2)
+# Get Port used for netlaunch/netlisten
+ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa testing-user@$VM_IP "trident get configuration" > input/deployed-trident.yaml
+NETLAUNCH_PORT=$(cat input/deployed-trident.yaml | grep image -A 2 | grep url | cut -d "/" -f 3 | cut -d ":" -f2)
 echo "NETLAUNCH_PORT: $NETLAUNCH_PORT"
+# Start netlisten to serve update image
 ./bin/netlisten --port $NETLAUNCH_PORT --servefolder artifacts/test-image > ./update.log 2>&1 &
+# Run AB update with forced rollback using storm-trident
+SSH_KEY="$HOME/.ssh/id_rsa"
+echo "Using SSH Key: $SSH_KEY"
+./bin/storm-trident helper ab-update -w \
+    "$SSH_KEY" \
+    "$VM_IP" \
+    "testing-user" \
+    "host" \
+    --trident-config "/var/lib/trident/config.yaml" \
+    --version 2 \
+    --stage-ab-update \
+    --finalize-ab-update \
+    --expect-failed-commit
 
-scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ./input/trident-2.yaml testing-user@$VM_IP:/tmp/trident.yaml
-ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa testing-user@$VM_IP sudo trident update /tmp/trident.yaml
-```
-
-## Verify results
-
-``` bash
-if [[ "$FALLBACK_MODE" == "none" ]]; then
-    echo "`virsh console virtdeploy-vm-0` should show a boot failure"
-else
-    ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa testing-user@$VM_IP sudo trident get status > status.yaml
-    if [[ "$FALLBACK_MODE" == "rollforward" ]]; then
-        if ! grep 'abActiveVolume: volume-b' status.yaml; then
-            echo "ERROR: Did not boot from B as expected"
-        fi
-    elif [[ "$FALLBACK_MODE" == "rollback" ]]; then
-        if ! grep 'abActiveVolume: volume-a' status.yaml; then
-            echo "ERROR: Did not boot from A as expected"
-        fi
-    fi
+EXPECTED_VOLUME="volume-a"
+if [ "$FALLBACK_MODE" == "rollforward" ]; then
+    EXPECTED_VOLUME="volume-b"
 fi
+
+# Verify results
+pushd tests/e2e_tests
+python3 -u -m pytest -m uefifallback \
+    -capture=no \
+    --host "$VM_IP" \
+    --runtime-env "host" \
+    --configuration "./trident_configurations/$TEST_NAME" \
+    --ab-active-volume "$EXPECTED_VOLUME" \
+    --keypath "$HOME/.ssh/id_rsa" \
+    -s
+popd
 ```
