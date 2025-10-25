@@ -221,6 +221,7 @@ stages:
             parameters:
               screenshotName: "install"
               deploymentEnvironment: virtualMachine
+              captureScreenshot: true
 
           - template: ../testing_common/display-deployment-logs.yml
             parameters:
