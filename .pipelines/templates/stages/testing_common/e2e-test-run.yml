@@ -244,6 +244,7 @@ steps:
       # Rollback-specific parameters
       updateScenarioName: "auto-rollback"
       updateScenarioFlag: "--forced-rollback"
+      expectActiveVolume: $(abActiveVolume)
       incrementUpdateVersion: false
       updateScenarioTestName: "rollback"
       expectCommitFailure: true
@@ -263,7 +264,6 @@ steps:
       netlistenPort: ${{ parameters.netlistenPort }}
       netlistenConfigFile: ${{ parameters.netlistenConfigFile }}
       httpsProxy: ${{ parameters.httpsProxy }}
-      abActiveVolume: $(abActiveVolume)
 
   # Run A/B update from servicing OS B into target OS A.
   - bash: |
