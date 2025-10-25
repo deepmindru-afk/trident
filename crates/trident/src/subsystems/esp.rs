@@ -325,12 +325,8 @@ fn simple_copy_boot_files(from_dir: &Path, to_dir: &Path) -> Result<(), Error> {
     );
     // Create to_dir if it doesn't exist
     if !Path::new(to_dir).exists() {
-        Dependency::Mkdir
-            .cmd()
-            .arg("-p")
-            .arg(to_dir)
-            .run_and_check()
-            .unwrap();
+        fs::create_dir_all(to_dir)
+            .context(format!("Failed to create directory {}", to_dir.display()))?;
     }
 
     // Copy all files from from_dir to to_dir as <existing_filename>.new
@@ -729,12 +725,7 @@ mod tests {
             .join(ESP_RELATIVE_MOUNT_POINT_PATH)
             .join(ESP_EFI_DIRECTORY)
             .join(esp_name);
-        Dependency::Mkdir
-            .cmd()
-            .arg("-p")
-            .arg(&fallback_esp_dir)
-            .run_and_check()
-            .unwrap();
+        fs::create_dir_all(&fallback_esp_dir).unwrap();
         create_boot_files(&fallback_esp_dir, file_names, content);
         fallback_esp_dir
     }
