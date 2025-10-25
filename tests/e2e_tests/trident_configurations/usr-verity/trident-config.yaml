@@ -90,4 +90,3 @@ os:
       secondaryGroups:
         - wheel
       sshMode: key-only
-  uefiFallback: rollback
