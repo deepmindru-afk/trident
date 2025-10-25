@@ -162,8 +162,10 @@ steps:
       echo "##vso[task.setvariable variable=version]$new_version"
 
       if [ ${{ parameters.tridentConfigurationName }} == 'uefifallback' ]; then
-        # uefi-fallback should maintain active volume as volume-a
-        echo "##vso[task.setvariable variable=abActiveVolume]volume-a"
+        # uefi-fallback should maintain active volume as volume-a .. also use
+        # variable to communicate (to the pytest) that this is the update
+        # scenario.
+        echo "##vso[task.setvariable variable=abActiveVolume]abupdate-volume-a"
       else
         echo "##vso[task.setvariable variable=abActiveVolume]volume-b"
       fi
