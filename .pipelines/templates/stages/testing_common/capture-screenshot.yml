@@ -16,9 +16,24 @@ parameters:
   - name: captureScreenshot
     type: string
 
+  - name: one
+    type: string
+    default: ""
+
+  - name: two
+    type: string
+    default: ""
+
+  - name: all
+    type: string
+    default: ""
+
 steps:
   - bash: |
       echo "captureScreenshot parameter is set to: ${{ parameters.captureScreenshot }}"
+      echo "one parameter is set to: ${{ parameters.one }}"
+      echo "two parameter is set to: ${{ parameters.two }}"
+      echo "all parameter is set to: ${{ parameters.all }}"
       echo "env vars:"
       printenv
     displayName: "Check env vars"
