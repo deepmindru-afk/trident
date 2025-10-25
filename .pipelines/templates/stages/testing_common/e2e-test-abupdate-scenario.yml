@@ -2,6 +2,9 @@ parameters:
   - name: updateScenarioName
     type: string
 
+  - name: updateScenarioTargetOs
+    type: string
+
   - name: updateScenarioFlag
     type: string
 
@@ -89,10 +92,10 @@ steps:
       fi
 
       ./bin/netlisten --force-color $NETLISTEN_CONFIG_ARGS \
-          -m $(Build.SourcesDirectory)/trident-ab-update-metrics-target-os-A.jsonl \
+          -m $(Build.SourcesDirectory)/trident-ab-update-metrics-target-os-${{ parameters.updateScenarioTargetOs }}-${{ parameters.updateScenarioName }}.jsonl \
           --full-logstream ./logstream-full.log \
           -s "${{ parameters.artifactsDirectory }}" \
-          -p ${{ parameters.netlistenPort }} > ./stage-finalize-ab-update-target-os-A.log 2>&1 &
+          -p ${{ parameters.netlistenPort }} > ./stage-finalize-ab-update-target-os-${{ parameters.updateScenarioTargetOs }}-${{ parameters.updateScenarioName }}.log 2>&1 &
 
       PROXY_ARG=""
       if [ -n "${{ parameters.httpsProxy }}" ]; then
@@ -130,12 +133,12 @@ steps:
 
     timeoutInMinutes: 15
     workingDirectory: $(Build.SourcesDirectory)
-    displayName: "🅰️🔄${{ parameters.updateEmoji }} Stage and finalize A/B update into target OS A triggering ${{ parameters.updateScenarioName }}"
+    displayName: "🅰️🔄${{ parameters.updateEmoji }} Stage and finalize A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
     condition: and(succeeded(), eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null'))
 
   - template: ../testing_common/capture-screenshot.yml
     parameters:
-      screenshotName: "update-a-autorollback"
+      screenshotName: "update-a-${{ parameters.updateScenarioName }}"
       captureScreenshot: ${{ and(eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null')) }}
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
@@ -143,30 +146,30 @@ steps:
     parameters:
       netlistenConfigFile: ${{ parameters.netlistenConfigFile }}
       outputDirectory: $(ob_outputDirectory)
-      partition: A
-      displayNameSuffix: "triggering ${{ parameters.updateScenarioName }}"
+      partition: ${{ parameters.updateScenarioTargetOs }}
+      displayNameSuffix: "testing ${{ parameters.updateScenarioName }}"
 
   - template: ../testing_common/display-deployment-logs.yml
     parameters:
-      deploymentLogPath: $(Build.SourcesDirectory)/stage-finalize-ab-update-target-os-A.log
-      displayName: "📄 Display A/B update deployment logs for target OS A triggering ${{ parameters.updateScenarioName }}"
+      deploymentLogPath: $(Build.SourcesDirectory)/stage-finalize-ab-update-target-os-${{ parameters.updateScenarioTargetOs }}-${{ parameters.updateScenarioName }}.log
+      displayName: "📄 Display A/B update deployment logs for target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
 
   - template: ../testing_common/display-deployment-logs.yml
     parameters:
       deploymentLogPath: $(Build.SourcesDirectory)/logstream-full.log
-      displayName: "📄 [TRACE] Display A/B update deployment logs for target OS A triggering ${{ parameters.updateScenarioName }}"
+      displayName: "📄 [TRACE] Display A/B update deployment logs for target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
 
   - bash: |
       set -eux
       python3 -u -m pytest \
           -m ${{ parameters.updateScenarioTestName }} \
           --capture=no \
-          --junit-xml=${{ parameters.deploymentEnvironment }}_${{ parameters.runtimeEnv }}_${{ parameters.tridentConfigurationName }}_${{ parameters.jUnitXMLIdentifier }}_ab_update_A_$(System.JobAttempt).junit.xml \
+          --junit-xml=${{ parameters.deploymentEnvironment }}_${{ parameters.runtimeEnv }}_${{ parameters.tridentConfigurationName }}_${{ parameters.jUnitXMLIdentifier }}_ab_update_${{ parameters.updateScenarioTargetOs }}_${{ parameters.updateScenarioName }}_$(System.JobAttempt).junit.xml \
           --host ${{ parameters.hostIp }} \
           --runtime-env ${{ parameters.runtimeEnv }} \
           --configuration ${{ parameters.tridentConfigPath }} \
           --ab-active-volume ${{ parameters.expectActiveVolume }}
     timeoutInMinutes: 5
     workingDirectory: $(Build.SourcesDirectory)/tests/e2e_tests
-    displayName: "🔬${{ parameters.updateEmoji }} Run Trident E2E tests after A/B update into target OS A triggering ${{ parameters.updateScenarioName }}"
+    displayName: "🔬${{ parameters.updateEmoji }} Run Trident E2E tests after A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
     condition: and(succeeded(), eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null'))

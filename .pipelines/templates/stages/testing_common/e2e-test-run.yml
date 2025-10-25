@@ -243,8 +243,9 @@ steps:
     parameters:
       # Rollback-specific parameters
       updateScenarioName: "auto-rollback"
+      updateScenarioTargetOs: "A"
       updateScenarioFlag: "--forced-rollback"
-      expectActiveVolume: $(abActiveVolume)
+      expectActiveVolume: volume-b
       incrementUpdateVersion: false
       updateScenarioTestName: "rollback"
       expectCommitFailure: true
