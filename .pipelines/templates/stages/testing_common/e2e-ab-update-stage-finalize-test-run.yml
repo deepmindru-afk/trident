@@ -169,9 +169,9 @@ steps:
     parameters:
       screenshotName: "finalize"
       captureScreenshot: ${{ ne(variables['abActiveVolume'], 'null') }}
-      one: ${{ eq(variables['testUpdateScenario'], 'true') }}
+      one: ${{ eq(variables['testUpdateScenario'], true) }}
       two: ${{ ne(variables['abActiveVolume'], 'null') }}
-      all: ${{ and(eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null')) }}
+      all: ${{ and(eq(variables['testUpdateScenario'], true), ne(variables['abActiveVolume'], 'null')) }}
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml
