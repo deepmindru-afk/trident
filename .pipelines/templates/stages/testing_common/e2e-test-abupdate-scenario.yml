@@ -123,7 +123,7 @@ steps:
 
       # Un-set the 'x' flag to avoid errors.
       set +x
-      echo "##vso[task.setvariable variable=abActiveVolume]volume-b"
+      echo "##vso[task.setvariable variable=abActiveVolume]${{ parameters.expectActiveVolume }}"
 
       if [ "${{ parameters.incrementUpdateVersion }}" == "True" ]; then
         current_version=$(echo $(version))
@@ -136,25 +136,29 @@ steps:
     displayName: "🅰️🔄${{ parameters.updateEmoji }} Stage and finalize A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
     condition: and(succeeded(), eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null'))
 
-  - template: ../testing_common/capture-screenshot.yml
+  - bash: |
+      printenv
+    displayName: "Check env vars"
+
+  - template: ./capture-screenshot.yml
     parameters:
       screenshotName: "update-a-${{ parameters.updateScenarioName }}"
       captureScreenshot: ${{ and(eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null')) }}
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
-  - template: ../testing_common/display-serial-logs.yml
+  - template: ./display-serial-logs.yml
     parameters:
       netlistenConfigFile: ${{ parameters.netlistenConfigFile }}
       outputDirectory: $(ob_outputDirectory)
       partition: ${{ parameters.updateScenarioTargetOs }}
       displayNameSuffix: "testing ${{ parameters.updateScenarioName }}"
 
-  - template: ../testing_common/display-deployment-logs.yml
+  - template: ./display-deployment-logs.yml
     parameters:
       deploymentLogPath: $(Build.SourcesDirectory)/stage-finalize-ab-update-target-os-${{ parameters.updateScenarioTargetOs }}-${{ parameters.updateScenarioName }}.log
       displayName: "📄 Display A/B update deployment logs for target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
 
-  - template: ../testing_common/display-deployment-logs.yml
+  - template: ./display-deployment-logs.yml
     parameters:
       deploymentLogPath: $(Build.SourcesDirectory)/logstream-full.log
       displayName: "📄 [TRACE] Display A/B update deployment logs for target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
