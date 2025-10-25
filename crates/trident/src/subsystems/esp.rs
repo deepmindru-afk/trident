@@ -328,58 +328,49 @@ fn simple_copy_boot_files(from_dir: &Path, to_dir: &Path) -> Result<(), Error> {
     }
 
     // Copy all files from from_dir to to_dir as <existing_filename>.new
-    fs::read_dir(from_dir)?.flatten().for_each(|from_path| {
-        let to_file_name = format!("{}.new", from_path.file_name().to_string_lossy());
-        let to_path = to_dir.join(to_file_name);
-        debug!(
-            "Copying file {} to {}",
-            from_path.path().display(),
-            to_path.display()
-        );
-        match fs::copy(from_path.path(), &to_path) {
-            Ok(_) => debug!(
+    fs::read_dir(from_dir)?
+        .flatten()
+        .try_for_each(|from_path| {
+            let to_file_name = format!("{}.new", from_path.file_name().to_string_lossy());
+            let to_path = to_dir.join(to_file_name);
+            fs::copy(from_path.path(), &to_path).context(format!(
+                "Failed to copy file {} to {}",
+                from_path.path().display(),
+                to_path.display(),
+            ))?;
+            debug!(
                 "Copied file {} to {}",
                 from_path.path().display(),
                 to_path.display()
-            ),
-            Err(e) => debug!(
-                "Failed to copy file {} to {}: {}",
-                from_path.path().display(),
-                to_path.display(),
-                e
-            ),
-        }
-    });
+            );
+            Ok::<(), Error>(())
+        })
+        .context("Failed to copy files")?;
 
     // Rename all copied files from to_dir/<filename>.new to to_dir/<filename>
-    fs::read_dir(to_dir)?.flatten().for_each(|orig_path| {
-        let orig_file_name = orig_path.file_name();
-        if !orig_file_name.to_string_lossy().ends_with(".new") {
+    fs::read_dir(to_dir)?
+        .flatten()
+        .try_for_each(|orig_path| {
+            let orig_file_name = orig_path.file_name();
             // Skip files that do not end with .new
-            return;
-        }
-        let orig_file_name_string = orig_file_name.to_string_lossy();
-        let new_file_name = orig_file_name_string.trim_end_matches(".new");
-        let to_path = to_dir.join(new_file_name);
-        trace!(
-            "Renaming file {} to {}",
-            orig_path.path().display(),
-            to_path.display()
-        );
-        match fs::rename(orig_path.path(), &to_path) {
-            Ok(_) => debug!(
-                "Renamed file {} to {}",
-                orig_path.path().display(),
-                to_path.display()
-            ),
-            Err(e) => debug!(
-                "Failed to rename file {} to {}: {}",
-                orig_path.path().display(),
-                to_path.display(),
-                e
-            ),
-        }
-    });
+            if orig_file_name.to_string_lossy().ends_with(".new") {
+                let orig_file_name_string = orig_file_name.to_string_lossy();
+                let new_file_name = orig_file_name_string.trim_end_matches(".new");
+                let to_path = to_dir.join(new_file_name);
+                fs::rename(orig_path.path(), &to_path).context(format!(
+                    "Failed to rename file {} to {}",
+                    orig_path.path().display(),
+                    to_path.display()
+                ))?;
+                debug!(
+                    "Renamed file {} to {}",
+                    orig_path.path().display(),
+                    to_path.display()
+                );
+            }
+            Ok::<(), Error>(())
+        })
+        .context("Failed to rename copied files")?;
     Ok(())
 }
 
