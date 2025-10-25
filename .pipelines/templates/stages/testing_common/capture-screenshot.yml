@@ -14,8 +14,7 @@ parameters:
     default: "virtdeploy-vm-0"
 
   - name: captureScreenshot
-    type: boolean
-    default: true
+    type: string
 
 steps:
   - bash: |
