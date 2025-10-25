@@ -49,16 +49,11 @@ sed -i "s|uefiFallback: .*|uefiFallback: $FALLBACK_MODE|" input/trident.yaml
 echo "Valid host configuration? $?"
 ```
 
-## Create test VM
+## Create test VM and run initial image installation
 
 ``` bash
 make tools/virt-deploy
 ./tools/virt-deploy create --mem 24 --disks 32,32
-```
-
-## Run initial image installation
-
-``` bash
 make run-netlaunch
 ```
 
