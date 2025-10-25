@@ -261,7 +261,6 @@ fn configure_uefi_fallback(ctx: &EngineContext, mount_point: &Path) -> Result<()
                         ))?;
                 }
                 _ => {
-                    // Otherwise, should this be an error???
                     debug!("{:?} detected, no action needed.", ctx.servicing_type);
                 }
             }
@@ -303,7 +302,6 @@ fn configure_uefi_fallback(ctx: &EngineContext, mount_point: &Path) -> Result<()
                     )?;
                 }
                 _ => {
-                    // Otherwise, should this be an error???
                     debug!("{:?} detected, no action needed.", ctx.servicing_type);
                 }
             }
