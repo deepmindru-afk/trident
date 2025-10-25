@@ -136,10 +136,6 @@ steps:
     displayName: "🅰️🔄${{ parameters.updateEmoji }} Stage and finalize A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
     condition: and(succeeded(), eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null'))
 
-  - bash: |
-      printenv
-    displayName: "Check env vars"
-
   - template: ./capture-screenshot.yml
     parameters:
       screenshotName: "update-a-${{ parameters.updateScenarioName }}"

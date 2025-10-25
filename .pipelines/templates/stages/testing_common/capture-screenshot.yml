@@ -18,6 +18,12 @@ parameters:
     default: true
 
 steps:
+  - bash: |
+      echo "captureScreenshot parameter is set to: ${{ parameters.captureScreenshot }}"
+      echo "env vars:"
+      printenv
+    displayName: "Check env vars"
+
   - ${{ if eq(parameters.deploymentEnvironment, 'virtualMachine') }}:
     - bash: |
         sudo apt-get install -y imagemagick
