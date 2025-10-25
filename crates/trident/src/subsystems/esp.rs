@@ -809,13 +809,13 @@ mod tests {
         ctx.servicing_type = ServicingType::AbUpdate;
         validate_fallback(&ctx, &file_names, "AZLB");
 
-        // Validate ABUpdate Rollforward with active volume A ==> copy /EFI/AZLA to /EFI/BOOT
+        // Validate ABUpdate Rollforward with active volume A ==> copy /EFI/AZLB to /EFI/BOOT
         ctx.spec.os.uefi_fallback = Some(UefiFallbackMode::Rollforward);
         ctx.ab_active_volume = Some(AbVolumeSelection::VolumeA);
         ctx.servicing_type = ServicingType::AbUpdate;
         validate_fallback(&ctx, &file_names, "AZLB");
 
-        // Validate ABUpdate Rollforward with active volume B ==> copy /EFI/AZLB to /EFI/BOOT
+        // Validate ABUpdate Rollforward with active volume B ==> copy /EFI/AZLA to /EFI/BOOT
         ctx.spec.os.uefi_fallback = Some(UefiFallbackMode::Rollforward);
         ctx.ab_active_volume = Some(AbVolumeSelection::VolumeB);
         ctx.servicing_type = ServicingType::AbUpdate;
