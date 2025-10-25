@@ -200,13 +200,15 @@ func checkTridentServiceInner(client *ssh.Client, serviceName string, expectSucc
 	commitSuccessfulExit := strings.Contains(mainPidLine, "(code=exited, status=0/SUCCESS")
 	if expectSuccessfulCommit {
 		if !commitSuccessfulExit {
-			return &reconnectNeeded, fmt.Errorf("did not expect to find '(code=exited, status=0/SUCCESS)' in Trident service status")
+			// commit exited with non-zero status, but we expected success
+			return &reconnectNeeded, fmt.Errorf("expected Trident service status to show '(code=exited, status=0/SUCCESS)', but it did not")
 		} else {
 			logrus.Info("Trident service ran and exited successfully")
 		}
 	} else {
 		if commitSuccessfulExit {
-			return &reconnectNeeded, fmt.Errorf("expected NOT to find '(code=exited, status=0/SUCCESS)' in Trident service status")
+			// we expected commit to exit with non-zero status, but we found success
+			return &reconnectNeeded, fmt.Errorf("expected Trident service status to show non-zero exit status, but found '(code=exited, status=0/SUCCESS)'")
 		} else {
 			logrus.Info("Trident service ran as expected and exited with non-zero status")
 		}
