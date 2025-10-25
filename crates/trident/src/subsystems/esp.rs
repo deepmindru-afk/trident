@@ -329,7 +329,8 @@ fn simple_copy_boot_files(from_dir: &Path, to_dir: &Path) -> Result<(), Error> {
 
     // Copy all files from from_dir to to_dir as <existing_filename>.new
     fs::read_dir(from_dir)?
-        .flatten()
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
         .try_for_each(|from_path| {
             let to_file_name = format!("{}.new", from_path.file_name().to_string_lossy());
             let to_path = to_dir.join(to_file_name);
@@ -349,7 +350,8 @@ fn simple_copy_boot_files(from_dir: &Path, to_dir: &Path) -> Result<(), Error> {
 
     // Rename all copied files from to_dir/<filename>.new to to_dir/<filename>
     fs::read_dir(to_dir)?
-        .flatten()
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
         .try_for_each(|orig_path| {
             let orig_file_name = orig_path.file_name();
             // Skip files that do not end with .new
