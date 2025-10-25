@@ -222,6 +222,9 @@ stages:
               screenshotName: "install"
               deploymentEnvironment: virtualMachine
               captureScreenshot: true
+              one: ${{ eq(variables['testUpdateScenario'], 'true') }}
+              two: ${{ ne(variables['abActiveVolume'], 'null') }}
+              all: ${{ and(eq(variables['testUpdateScenario'], 'true'), ne(variables['abActiveVolume'], 'null')) }}
 
           - template: ../testing_common/display-deployment-logs.yml
             parameters:
