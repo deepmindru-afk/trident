@@ -248,7 +248,7 @@ func (h *AbUpdateHelper) handleUefiFallback(tc storm.TestCase) error {
 		if ok {
 			filteredPostConfigureScripts := make([]any, 0)
 			for _, script := range postConfigureScripts {
-				if script.(map[string]any)["name"] == "reset-uefi-and-reboot" {
+				if script.(map[string]any)["name"] != "reset-uefi-and-reboot" {
 					filteredPostConfigureScripts = append(filteredPostConfigureScripts, script)
 				}
 			}
