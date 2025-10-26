@@ -230,10 +230,10 @@ steps:
       displayNameSpecifier: "A/B update into target OS B"
       artifactName: "junit_for_trident_ab_update_B"
 
-  # Test auto-rollback scenario after A/B update into target OS A.
-  # This scenario will configure an update into target OS B that 
+  # Test auto-rollback scenario after A/B update into target OS B.
+  # This scenario will configure an update into target OS A that
   # will execute failing health checks, triggering an auto rollback
-  # to target OS A.
+  # to target OS B.
   #
   # This scenario is configured to run for all VM e2e tests that
   # do A/B update, and for BM e2e tests that do A/B update in the
