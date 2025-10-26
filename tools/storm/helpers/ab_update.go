@@ -169,6 +169,7 @@ func (h *AbUpdateHelper) updateHostConfig(tc storm.TestCase) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal YAML: %w", err)
 	}
+	logrus.Tracef("New Trident configuration:\n%v", string(hc_yaml))
 
 	sftpClient, err := utils.NewSftpSudoClient(h.client)
 	if err != nil {
@@ -215,7 +216,7 @@ func (h *AbUpdateHelper) handleUefiFallback(tc storm.TestCase) error {
 		scripts = make(map[string]any)
 	}
 	if h.args.UefiFallback != "none" {
-		logrus.Infof("Configuring UEFI-fallback rollback settings in host config")
+		logrus.Tracef("Configuring UEFI-fallback rollback settings in host config")
 		os, ok := h.config["os"].(map[string]any)
 		if !ok {
 			os = make(map[string]any)
@@ -233,7 +234,7 @@ func (h *AbUpdateHelper) handleUefiFallback(tc storm.TestCase) error {
 			"runOn":   []string{"ab-update"},
 		})
 	} else {
-		logrus.Infof("Ensuring UEFI-fallback rollback settings are not in host config")
+		logrus.Tracef("Ensuring UEFI-fallback rollback settings are not in host config")
 		os, ok := h.config["os"].(map[string]any)
 		if ok {
 			os["uefiFallback"] = "none"
