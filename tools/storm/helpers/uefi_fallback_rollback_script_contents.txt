@@ -1,4 +1,4 @@
-cat <<'EOF' >/usr/local/bin/reset-uefi-and-reboot.sh
+cat <<'EOF' >/root/reset-uefi-and-reboot.sh
 #!/bin/bash
 set -euo pipefail
 echo 'reset UEFI variables to force fallback on next boot'
@@ -21,7 +21,7 @@ systemctl disable reset-uefi-and-reboot.service
 echo 'rebooting to trigger UEFI fallback'
 /usr/sbin/reboot
 EOF
-chmod +x /usr/local/bin/reset-uefi-and-reboot.sh
+chmod +x /root/reset-uefi-and-reboot.sh
 
 # Create a systemd service to run the script on boot
 cat <<'EOF' >/etc/systemd/system/reset-uefi-and-reboot.service
@@ -30,7 +30,7 @@ Description=Reset UEFI variables and reboot
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/reset-uefi-and-reboot.sh
+ExecStart=/root/reset-uefi-and-reboot.sh
 
 [Install]
 WantedBy=multi-user.target
