@@ -94,7 +94,9 @@ func (h *AbUpdateHelper) updateHostConfig(tc storm.TestCase) error {
 		tc.Skip("Staging not requested")
 	}
 
+	logrus.Tracef("Pre UefiFallback Trident configuration:\n%v", h.config)
 	h.handleUefiFallback(tc)
+	logrus.Tracef("Post UefiFallback Trident configuration:\n%v", h.config)
 
 	// Extract the OLD URL from the configuration
 	oldUrl, ok := h.config["image"].(map[string]interface{})["url"].(string)
@@ -233,6 +235,7 @@ func (h *AbUpdateHelper) handleUefiFallback(tc storm.TestCase) error {
 			"content": UefiFallbackRollbackContents,
 			"runOn":   []string{"ab-update"},
 		})
+		h.config["scripts"] = scripts
 	} else {
 		logrus.Tracef("Ensuring UEFI-fallback rollback settings are not in host config")
 		os, ok := h.config["os"].(map[string]any)
