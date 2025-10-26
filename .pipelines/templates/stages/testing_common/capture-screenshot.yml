@@ -13,20 +13,21 @@ parameters:
     type: string
     default: "virtdeploy-vm-0"
 
-  - name: captureScreenshot
+  - name: conditional1
     type: string
+    default: "true"
 
   - name: one
     type: string
-    default: ""
+    default: "true"
 
   - name: two
     type: string
-    default: ""
+    default: "true"
 
   - name: all
     type: string
-    default: ""
+    default: "true"
 
 steps:
   - bash: |
