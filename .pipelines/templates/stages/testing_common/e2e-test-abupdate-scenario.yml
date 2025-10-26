@@ -70,14 +70,14 @@ steps:
   - bash: |
       if [ "${{ parameters.deploymentEnvironment }}" == "virtualMachine" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for all VM tests that do AB Update"
-        echo "##vso[task.setvariable variable=testUpdateScenario]true"
+        echo "##vso[task.setvariable variable=testUpdateScenario]yes"
       elif [ "${{ parameters.deploymentEnvironment }}" == "bareMetal" ] && 
          [ "${{ parameters.buildPurpose }}" == "weekly" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for BM tests that do AB Update for Full Validation"
-        echo "##vso[task.setvariable variable=testUpdateScenario]true"
+        echo "##vso[task.setvariable variable=testUpdateScenario]yes"
       else
         echo "Do not test ${{ parameters.updateScenarioName }}"
-        echo "##vso[task.setvariable variable=testUpdateScenario]false"
+        echo "##vso[task.setvariable variable=testUpdateScenario]no"
       fi
     displayName: "Determine whether to test ${{ parameters.updateScenarioName }}"
 
@@ -134,15 +134,15 @@ steps:
     timeoutInMinutes: 15
     workingDirectory: $(Build.SourcesDirectory)
     displayName: "🅰️🔄${{ parameters.updateEmoji }} Stage and finalize A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
-    condition: and(succeeded(), eq(variables['testUpdateScenario'], true), ne(variables['abActiveVolume'], 'null'))
+    condition: and(succeeded(), eq(variables['testUpdateScenario'], 'yes'), ne(variables['abActiveVolume'], 'null'))
 
   - template: ./capture-screenshot.yml
     parameters:
       screenshotName: "update-a-${{ parameters.updateScenarioName }}"
-      captureScreenshot: ${{ and(eq(variables['testUpdateScenario'], true), ne(variables['abActiveVolume'], 'null')) }}
-      one: ${{ eq(variables['testUpdateScenario'], true) }}
+      captureScreenshot: ${{ and(eq(variables['testUpdateScenario'], 'yes'), ne(variables['abActiveVolume'], 'null')) }}
+      one: ${{ eq(variables['testUpdateScenario'], 'yes') }}
       two: $(testUpdateScenario)
-      all: ${{ coalesce(variables.testUpdateScenario, 'aaa') }}
+      all: ${{ coalesce(variables['testUpdateScenario'], 'aaa') }}
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ./display-serial-logs.yml
