@@ -13,7 +13,7 @@ parameters:
     type: string
     default: "virtdeploy-vm-0"
 
-  - name: conditional1
+  - name: captureScreenshot
     type: string
     default: "true"
 
