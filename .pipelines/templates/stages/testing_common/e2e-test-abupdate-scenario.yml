@@ -68,16 +68,18 @@ parameters:
 
 steps:
   - bash: |
+      existingAbUpdateVolume=$(abActiveVolume)
+      echo "Cache existing abUpdateVolume value: $existingAbUpdateVolume"
+      echo "##vso[task.setvariable variable=existingAbUpdateVolume]$existingAbUpdateVolume"
+
       if [ "${{ parameters.deploymentEnvironment }}" == "virtualMachine" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for all VM tests that do AB Update"
-        echo "##vso[task.setvariable variable=testUpdateScenario]yes"
       elif [ "${{ parameters.deploymentEnvironment }}" == "bareMetal" ] && 
          [ "${{ parameters.buildPurpose }}" == "weekly" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for BM tests that do AB Update for Full Validation"
-        echo "##vso[task.setvariable variable=testUpdateScenario]yes"
       else
         echo "Do not test ${{ parameters.updateScenarioName }}"
-        echo "##vso[task.setvariable variable=testUpdateScenario]no"
+        echo "##vso[task.setvariable variable=abUpdateVolume]null"
       fi
     displayName: "Determine whether to test ${{ parameters.updateScenarioName }}"
 
@@ -139,8 +141,6 @@ steps:
   - template: ./capture-screenshot.yml
     parameters:
       screenshotName: "update-a-${{ parameters.updateScenarioName }}"
-      captureScreenshotIfNonNull: $(abActiveVolume)
-      captureScreenshotIfTrue: $(testUpdateScenario)
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ./display-serial-logs.yml
@@ -174,3 +174,7 @@ steps:
     workingDirectory: $(Build.SourcesDirectory)/tests/e2e_tests
     displayName: "🔬${{ parameters.updateEmoji }} Run Trident E2E tests after A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
     condition: and(succeeded(), eq(variables['testUpdateScenario'], true), ne(variables['abActiveVolume'], 'null'))
+
+  - bash: |
+      echo "##vso[task.setvariable variable=abActiveVolume]$(existingAbUpdateVolume)"
+    displayName: "Reset abActiveVolume variable"

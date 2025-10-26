@@ -42,4 +42,4 @@ steps:
         echo "(No serial log captured)" > $SERIAL_LOG_ARTIFACT_PATH
       fi
     displayName: "📄 Display serial output from update to ${{ parameters.partition }} ${{ parameters.displayNameSuffix }}"
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), ne(variables['abActiveVolume'], 'null'))

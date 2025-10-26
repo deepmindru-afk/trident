@@ -163,7 +163,6 @@ steps:
   - template: ../testing_common/capture-screenshot.yml
     parameters:
       screenshotName: "update-b"
-      captureScreenshotIfNonNull: $(abActiveVolume)
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml
@@ -314,7 +313,6 @@ steps:
   - template: ../testing_common/capture-screenshot.yml
     parameters:
       screenshotName: "update-a"
-      captureScreenshotIfNonNull: $(abActiveVolume)
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml
