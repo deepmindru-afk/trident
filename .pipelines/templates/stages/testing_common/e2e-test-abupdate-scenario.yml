@@ -143,7 +143,6 @@ steps:
       netlistenConfigFile: ${{ parameters.netlistenConfigFile }}
       outputDirectory: $(ob_outputDirectory)
       partition: ${{ parameters.updateScenarioTargetOs }}
-      displayNameSuffix: "testing ${{ parameters.updateScenarioName }}"
 
   - template: ./display-deployment-logs.yml
     parameters:
