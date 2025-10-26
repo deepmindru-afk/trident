@@ -163,10 +163,7 @@ steps:
   - template: ../testing_common/capture-screenshot.yml
     parameters:
       screenshotName: "update-b"
-      captureScreenshot: ${{ ne(variables['abActiveVolume'], 'null') }}
-      one: ${{ eq(variables['testUpdateScenario'], true) }}
-      two: ${{ ne(variables['abActiveVolume'], 'null') }}
-      all: ${{ and(eq(variables['testUpdateScenario'], true), ne(variables['abActiveVolume'], 'null')) }}
+      captureScreenshotIfNonNull: $(abActiveVolume)
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml
@@ -317,10 +314,7 @@ steps:
   - template: ../testing_common/capture-screenshot.yml
     parameters:
       screenshotName: "update-a"
-      captureScreenshot: ${{ ne(variables['abActiveVolume'], 'null') }}
-      one: ${{ eq(variables['testUpdateScenario'], true) }}
-      two: ${{ ne(variables['abActiveVolume'], 'null') }}
-      all: ${{ and(eq(variables['testUpdateScenario'], true), ne(variables['abActiveVolume'], 'null')) }}
+      captureScreenshotIfNonNull: $(abActiveVolume)
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ../testing_common/display-serial-logs.yml

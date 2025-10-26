@@ -13,28 +13,18 @@ parameters:
     type: string
     default: "virtdeploy-vm-0"
 
-  - name: captureScreenshot
+  - name: captureScreenshotIfTrue
     type: string
     default: "true"
 
-  - name: one
+  - name: captureScreenshotIfNonNull
     type: string
-    default: "true"
-
-  - name: two
-    type: string
-    default: "true"
-
-  - name: all
-    type: string
-    default: "true"
+    default: "notnull"
 
 steps:
   - bash: |
-      echo "captureScreenshot parameter is set to: ${{ parameters.captureScreenshot }}"
-      echo "one parameter is set to: ${{ parameters.one }}"
-      echo "two parameter is set to: ${{ parameters.two }}"
-      echo "all parameter is set to: ${{ parameters.all }}"
+      echo "captureScreenshotIfTrue parameter is set to: ${{ parameters.captureScreenshotIfTrue }}"
+      echo "captureScreenshotIfNonNull parameter is set to: ${{ parameters.captureScreenshotIfNonNull }}"
       echo "env vars:"
       printenv
     displayName: "Check env vars"
@@ -43,7 +33,7 @@ steps:
     - bash: |
         sudo apt-get install -y imagemagick
       displayName: Install image package
-      condition: and(succeededOrFailed(), eq(${{ parameters.captureScreenshot }}, true))
+      condition: and(succeededOrFailed(), and(eq(${{ parameters.captureScreenshotIfTrue }}, true)), ne(${{ parameters.captureScreenshotIfNonNull }}, 'null'))
       retryCountOnTaskFailure: 3
     - bash: |
         set -eux
@@ -51,5 +41,5 @@ steps:
         # Capture screenshot from the VM using virsh and convert it to PNG format
         sudo virsh screenshot ${{ parameters.vmName }} /tmp/screenshot.ppm
         convert /tmp/screenshot.ppm $(ob_outputDirectory)/${{ parameters.screenshotName }}.png
-      condition: and(succeededOrFailed(), eq(${{ parameters.captureScreenshot }}, true))
+      condition: and(succeededOrFailed(), and(eq(${{ parameters.captureScreenshotIfTrue }}, true)), ne(${{ parameters.captureScreenshotIfNonNull }}, 'null'))
       displayName: "📷 Capture screenshot: ${{ parameters.screenshotName }}"

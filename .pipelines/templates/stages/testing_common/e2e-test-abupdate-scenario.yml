@@ -139,10 +139,8 @@ steps:
   - template: ./capture-screenshot.yml
     parameters:
       screenshotName: "update-a-${{ parameters.updateScenarioName }}"
-      captureScreenshot: ${{ and(eq(variables['testUpdateScenario'], 'yes'), ne(variables['abActiveVolume'], 'null')) }}
-      one: ${{ eq(variables['testUpdateScenario'], 'yes') }}
-      two: $(testUpdateScenario)
-      all: ${{ coalesce(variables['testUpdateScenario'], 'aaa') }}
+      captureScreenshotIfNonNull: $(abActiveVolume)
+      captureScreenshotIfTrue: $(testUpdateScenario)
       deploymentEnvironment: ${{ parameters.deploymentEnvironment }}
 
   - template: ./display-serial-logs.yml
