@@ -33,7 +33,7 @@ steps:
     - bash: |
         sudo apt-get install -y imagemagick
       displayName: Install image package
-      condition: and(succeededOrFailed(), and(eq(${{ parameters.captureScreenshotIfTrue }}, true)), ne(${{ parameters.captureScreenshotIfNonNull }}, 'null'))
+      condition: and(succeededOrFailed(), and(eq(${{ parameters.captureScreenshotIfTrue }}, true), ne(${{ parameters.captureScreenshotIfNonNull }}, 'null')))
       retryCountOnTaskFailure: 3
     - bash: |
         set -eux
@@ -41,5 +41,5 @@ steps:
         # Capture screenshot from the VM using virsh and convert it to PNG format
         sudo virsh screenshot ${{ parameters.vmName }} /tmp/screenshot.ppm
         convert /tmp/screenshot.ppm $(ob_outputDirectory)/${{ parameters.screenshotName }}.png
-      condition: and(succeededOrFailed(), and(eq(${{ parameters.captureScreenshotIfTrue }}, true)), ne(${{ parameters.captureScreenshotIfNonNull }}, 'null'))
+      condition: and(succeededOrFailed(), and(eq(${{ parameters.captureScreenshotIfTrue }}, true), ne(${{ parameters.captureScreenshotIfNonNull }}, 'null')))
       displayName: "📷 Capture screenshot: ${{ parameters.screenshotName }}"
