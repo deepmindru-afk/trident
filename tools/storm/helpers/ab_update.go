@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	_ "embed"
 	"fmt"
 	"net/http"
 	"path"
@@ -27,6 +28,7 @@ type AbUpdateHelper struct {
 		FinalizeAbUpdate     bool   `short:"f" help:"Controls whether A/B update should be finalized."`
 		Proxy                string `help:"Proxy address. Input should include the env var name, i.e. HTTPS_PROXY=http://0.0.0.0."`
 		ExpectFailedCommit   bool   `help:"Controls whether this test treats failed commits as successful." default:"false"`
+		UefiFallback         string `help:"Controls type UEFI fallback testing to use." default:"none"`
 	}
 
 	client *ssh.Client
@@ -91,6 +93,8 @@ func (h *AbUpdateHelper) updateHostConfig(tc storm.TestCase) error {
 	if !h.args.StageAbUpdate {
 		tc.Skip("Staging not requested")
 	}
+
+	h.handleUefiFallback(tc)
 
 	// Extract the OLD URL from the configuration
 	oldUrl, ok := h.config["image"].(map[string]interface{})["url"].(string)
@@ -199,6 +203,55 @@ func (h *AbUpdateHelper) updateHostConfig(tc storm.TestCase) error {
 		return fmt.Errorf("failed to change ownership of new Host Config file: %w", err)
 	}
 
+	return nil
+}
+
+//go:embed uefi_fallback_rollback_script_contents.txt
+var UefiFallbackRollbackContents string
+
+func (h *AbUpdateHelper) handleUefiFallback(tc storm.TestCase) error {
+	scripts, ok := h.config["scripts"].(map[string]any)
+	if !ok {
+		scripts = make(map[string]any)
+	}
+	if h.args.UefiFallback != "none" {
+		logrus.Infof("Configuring UEFI-fallback rollback settings in host config")
+		os, ok := h.config["os"].(map[string]any)
+		if !ok {
+			os = make(map[string]any)
+		}
+		os["uefiFallback"] = h.args.UefiFallback
+		h.config["os"] = os
+
+		postConfigureScripts, ok := scripts["postConfigure"].([]any)
+		if !ok {
+			postConfigureScripts = make([]any, 0)
+		}
+		scripts["postConfigure"] = append(postConfigureScripts, map[string]any{
+			"name":    "reset-uefi-and-reboot",
+			"content": UefiFallbackRollbackContents,
+			"runOn":   []string{"ab-update"},
+		})
+	} else {
+		logrus.Infof("Ensuring UEFI-fallback rollback settings are not in host config")
+		os, ok := h.config["os"].(map[string]any)
+		if ok {
+			os["uefiFallback"] = "none"
+			h.config["os"] = os
+		}
+
+		postConfigureScripts, ok := scripts["postConfigure"].([]any)
+		if ok {
+			filteredPostConfigureScripts := make([]any, 0)
+			for _, script := range postConfigureScripts {
+				if script.(map[string]any)["name"] == "reset-uefi-and-reboot" {
+					filteredPostConfigureScripts = append(filteredPostConfigureScripts, script)
+				}
+			}
+			scripts["postConfigure"] = filteredPostConfigureScripts
+			h.config["scripts"] = scripts
+		}
+	}
 	return nil
 }
 
