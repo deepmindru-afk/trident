@@ -136,7 +136,7 @@ steps:
     timeoutInMinutes: 15
     workingDirectory: $(Build.SourcesDirectory)
     displayName: "🅰️🔄${{ parameters.updateEmoji }} Stage and finalize A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
-    condition: and(succeeded(), eq(variables['testUpdateScenario'], 'yes'), ne(variables['abActiveVolume'], 'null'))
+    condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
 
   - template: ./capture-screenshot.yml
     parameters:
@@ -173,7 +173,7 @@ steps:
     timeoutInMinutes: 5
     workingDirectory: $(Build.SourcesDirectory)/tests/e2e_tests
     displayName: "🔬${{ parameters.updateEmoji }} Run Trident E2E tests after A/B update into target OS ${{ parameters.updateScenarioTargetOs }} testing ${{ parameters.updateScenarioName }}"
-    condition: and(succeeded(), eq(variables['testUpdateScenario'], true), ne(variables['abActiveVolume'], 'null'))
+    condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
 
   - bash: |
       echo "##vso[task.setvariable variable=abActiveVolume]$(existingAbUpdateVolume)"
