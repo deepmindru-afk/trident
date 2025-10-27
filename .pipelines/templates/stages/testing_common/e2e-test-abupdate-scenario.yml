@@ -74,28 +74,28 @@ steps:
   - bash: |
       set -eux
 
-      existingAbUpdateVolume=$(abActiveVolume)
+      existingAbActiveVolume=$(abActiveVolume)
  
-      internalSetting=$existingAbUpdateVolume
+      internalSetting=$existingAbActiveVolume
       if echo "${{ parameters.skipConfigurations }}" | grep -wq "${{ parameters.tridentConfigurationName }}"; then
         echo "Skipping ${{ parameters.updateScenarioName }} as it is in skipConfigurations list [${{ parameters.skipConfigurations }}]"
         internalSetting='null'
       elif [ "${{ parameters.deploymentEnvironment }}" == "virtualMachine" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for all VM tests that do AB Update"
-        internalSetting=$existingAbUpdateVolume
+        internalSetting=$existingAbActiveVolume
       elif [ "${{ parameters.deploymentEnvironment }}" == "bareMetal" ] && 
          [ "${{ parameters.buildPurpose }}" == "weekly" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for BM tests that do AB Update for Full Validation"
-        internalSetting=$existingAbUpdateVolume
+        internalSetting=$existingAbActiveVolume
       else
         echo "Do not test ${{ parameters.updateScenarioName }}"
         internalSetting='null'
       fi
 
       set +x
-      echo "Cache existing abUpdateVolume value: $existingAbUpdateVolume"
-      echo "##vso[task.setvariable variable=existingAbUpdateVolume]$existingAbUpdateVolume"
-      echo "Set abUpdateVolume value for this template: $internalSetting"
+      echo "Cache existing abActiveVolume value: $existingAbActiveVolume"
+      echo "##vso[task.setvariable variable=existingAbActiveVolume]$existingAbActiveVolume"
+      echo "Set abActiveVolume value for this template: $internalSetting"
       echo "##vso[task.setvariable variable=abActiveVolume]$internalSetting"
     displayName: "Determine whether to test ${{ parameters.updateScenarioName }}"
 
@@ -186,6 +186,6 @@ steps:
     condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
 
   - bash: |
-      echo "Reset abUpdateVolume value to cached value: $(existingAbUpdateVolume)"
-      echo "##vso[task.setvariable variable=abActiveVolume]$(existingAbUpdateVolume)"
+      echo "Reset abActiveVolume value to cached value: $(existingAbActiveVolume)"
+      echo "##vso[task.setvariable variable=abActiveVolume]$(existingAbActiveVolume)"
     displayName: "Reset abActiveVolume variable"
