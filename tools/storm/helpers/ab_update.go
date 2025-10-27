@@ -94,10 +94,6 @@ func (h *AbUpdateHelper) updateHostConfig(tc storm.TestCase) error {
 		tc.Skip("Staging not requested")
 	}
 
-	logrus.Tracef("Pre UefiFallback Trident configuration:\n%v", h.config)
-	h.handleUefiFallback(tc)
-	logrus.Tracef("Post UefiFallback Trident configuration:\n%v", h.config)
-
 	// Extract the OLD URL from the configuration
 	oldUrl, ok := h.config["image"].(map[string]interface{})["url"].(string)
 	if !ok {
@@ -163,6 +159,9 @@ func (h *AbUpdateHelper) updateHostConfig(tc storm.TestCase) error {
 		h.config["internalParams"] = internalParams
 	}
 	internalParams["selfUpgradeTrident"] = false
+
+	// Handle UEFI-fallback settings if configured
+	h.handleUefiFallback(tc)
 
 	// Delete the storage section from the config, not needed for A/B update
 	delete(h.config, "storage")
@@ -230,12 +229,49 @@ func (h *AbUpdateHelper) handleUefiFallback(tc storm.TestCase) error {
 		if !ok {
 			postConfigureScripts = make([]any, 0)
 		}
+		scriptContents := UefiFallbackRollbackContents
+		// Use image in Host Configuration to determine if the image is
+		// root-verity
+		imageUrl, ok := h.config["image"].(map[string]interface{})["url"].(string)
+		if !ok {
+			return fmt.Errorf("failed to get image URL from config")
+		}
+
+		// Generally, use / path
+		finalPath := "/reset-uefi-and-reboot.sh"
+		needWritableEtcInternalParam := false
+		if strings.Contains(imageUrl, "verity") {
+			if !strings.Contains(imageUrl, "usrverity") {
+				// root-verity image, use /usr path
+				finalPath = "/var/lib/trident/reset-uefi-and-reboot.sh"
+				needWritableEtcInternalParam = true
+			} else {
+				// usr-verity image, use / path
+				finalPath = "/reset-uefi-and-reboot.sh"
+			}
+		}
+		scriptContents = strings.ReplaceAll(
+			scriptContents,
+			"/FINAL_PATH/reset-uefi-and-reboot.sh",
+			finalPath,
+		)
+
 		scripts["postConfigure"] = append(postConfigureScripts, map[string]any{
 			"name":    "reset-uefi-and-reboot",
-			"content": UefiFallbackRollbackContents,
+			"content": scriptContents,
 			"runOn":   []string{"ab-update"},
 		})
 		h.config["scripts"] = scripts
+
+		if needWritableEtcInternalParam {
+			// Set the config to NOT self-upgrade
+			internalParams, ok := h.config["internalParams"].(map[string]any)
+			if !ok {
+				internalParams = make(map[string]any)
+			}
+			internalParams["writableEtcOverlayHooks"] = true
+			h.config["internalParams"] = internalParams
+		}
 	} else {
 		logrus.Tracef("Ensuring UEFI-fallback rollback settings are not in host config")
 		os, ok := h.config["os"].(map[string]any)
@@ -256,6 +292,7 @@ func (h *AbUpdateHelper) handleUefiFallback(tc storm.TestCase) error {
 			h.config["scripts"] = scripts
 		}
 	}
+	logrus.Tracef("Modified config for UEFI-fallback: [%v]", h.config)
 	return nil
 }
 

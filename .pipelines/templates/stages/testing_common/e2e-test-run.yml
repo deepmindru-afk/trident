@@ -246,7 +246,6 @@ steps:
       updateScenarioTestName: "uefifallback"
       expectCommitFailure: true
       updateEmoji: "💫"
-      skipConfigurations: "root-verity"
       # Pass all other parameters throuh
       buildPurpose: ${{ parameters.buildPurpose }}
       tridentConfigurationName: ${{ parameters.tridentConfigurationName }}
