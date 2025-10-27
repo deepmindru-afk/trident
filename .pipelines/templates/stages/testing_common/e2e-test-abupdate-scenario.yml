@@ -1,29 +1,40 @@
 parameters:
+  # Scenario name (like 'auto-rollback') will be appended to task display names and log file names
   - name: updateScenarioName
     type: string
 
+  # Scenario target OS (like 'A' or 'B') will be used in task display names and log file names
   - name: updateScenarioTargetOs
     type: string
 
+  # Flag to be passed to the storm ab-update command for this scenario
   - name: updateScenarioFlag
     type: string
 
+  # Whether to increment the COSI version after the update
   - name: incrementUpdateVersion
     type: boolean
 
+  # Test name to be passed to pytest for selecting scenario tests
   - name: updateScenarioTestName
     type: string
 
+  # Whether the storm ab-update helper should expect the target OS 'trident commit' to fail
   - name: expectCommitFailure
     type: boolean
 
+  # Expected final active volume after the scenario finishes
   - name: expectActiveVolume
     type: string
 
+  # Emoji to use in task display names for this scenario
   - name: updateEmoji
     type: string
     default: ""
 
+  #
+  # Support all of the e2e-test-run.yml parameters
+  #
   - name: buildPurpose
     type: string
 
