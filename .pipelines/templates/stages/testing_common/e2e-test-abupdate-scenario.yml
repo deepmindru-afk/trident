@@ -96,7 +96,7 @@ steps:
       echo "Cache existing abUpdateVolume value: $existingAbUpdateVolume"
       echo "##vso[task.setvariable variable=existingAbUpdateVolume]$existingAbUpdateVolume"
       echo "Set abUpdateVolume value for this template: $internalSetting"
-      echo "##vso[task.setvariable variable=abUpdateVolume]$internalSetting"
+      echo "##vso[task.setvariable variable=abActiveVolume]$internalSetting"
     displayName: "Determine whether to test ${{ parameters.updateScenarioName }}"
 
   - bash: |
