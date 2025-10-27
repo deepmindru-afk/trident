@@ -3,9 +3,10 @@
 
 `Health checks` have been implemented to enable customers to define whether a
 servicing operation leaves the target OS in a healthy state. These
-`health checks` are run during `trident commit` and can run customer-defined
+`health checks` are optionally run during `trident commit` after a clean
+install and/or an A/B update. The `health checks` can include user-defined
 [scripts](../Reference/Host-Configuration/API-Reference/Script.md) and/or
-verify that
+configurations to verify that
 [systemd services are running](../Reference/Host-Configuration/API-Reference/SystemdCheck.md).
 
 If any health check fails:
@@ -70,9 +71,9 @@ health:
 
 ## Behavior
 
-Health checks are run during `trident commit`. `trident commit` must be run to
-complete any servicing action. You can see how `health checks` fit into the
-overall servicing flow in these diagrams:
+Health checks are run during `trident commit` after a `trident install` or
+`trident update` have staged and finalized. You can see how `health checks`
+fit into the overall servicing flow in these diagrams:
 
 ```mermaid
 ---
