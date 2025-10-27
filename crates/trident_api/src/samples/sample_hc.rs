@@ -195,8 +195,8 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     ),
                     Check::SystemdCheck(
                         SystemdCheck {
-                            name: "user.slice".into(),
-                            systemd_services: vec!["user.slice".into()],
+                            name: "systemd-networkd".into(),
+                            systemd_services: vec!["systemd-networkd".into()],
                             timeout_seconds: 10,
                             run_on: vec![ServicingTypeSelection::CleanInstall, ServicingTypeSelection::AbUpdate],
                         }
@@ -409,8 +409,8 @@ pub fn sample_host_configuration(name: &str) -> Result<(&'static str, HostConfig
                     ),
                     Check::SystemdCheck(
                         SystemdCheck {
-                            name: "user.slice".into(),
-                            systemd_services: vec!["user.slice".into()],
+                            name: "systemd-networkd".into(),
+                            systemd_services: vec!["systemd-networkd".into()],
                             timeout_seconds: 10,
                             run_on: vec![ServicingTypeSelection::CleanInstall, ServicingTypeSelection::AbUpdate],
                         }

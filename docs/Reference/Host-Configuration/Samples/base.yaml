@@ -131,9 +131,9 @@ health:
     - clean-install
     - ab-update
     content: echo 'success'
-  - name: user.slice
+  - name: systemd-networkd
     systemdServices:
-    - user.slice
+    - systemd-networkd
     timeoutSeconds: 10
     runOn:
     - clean-install
