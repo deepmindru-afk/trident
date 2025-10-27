@@ -68,19 +68,26 @@ parameters:
 
 steps:
   - bash: |
-      existingAbUpdateVolume=$(abActiveVolume)
-      echo "Cache existing abUpdateVolume value: $existingAbUpdateVolume"
-      echo "##vso[task.setvariable variable=existingAbUpdateVolume]$existingAbUpdateVolume"
-
+      set -eux
+      existingAbActiveVolume=$(abActiveVolume) 
+      internalSetting=$existingAbActiveVolume
       if [ "${{ parameters.deploymentEnvironment }}" == "virtualMachine" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for all VM tests that do AB Update"
+        internalSetting=$existingAbActiveVolume
       elif [ "${{ parameters.deploymentEnvironment }}" == "bareMetal" ] && 
          [ "${{ parameters.buildPurpose }}" == "weekly" ]; then
         echo "Test ${{ parameters.updateScenarioName }} for BM tests that do AB Update for Full Validation"
+        internalSetting=$existingAbActiveVolume
       else
         echo "Do not test ${{ parameters.updateScenarioName }}"
-        echo "##vso[task.setvariable variable=abUpdateVolume]null"
+        internalSetting='null'
       fi
+
+      set +x
+      echo "Cache existing abActiveVolume value: $existingAbActiveVolume"
+      echo "##vso[task.setvariable variable=existingAbActiveVolume]$existingAbActiveVolume"
+      echo "Set abActiveVolume value for this template: $internalSetting"
+      echo "##vso[task.setvariable variable=abActiveVolume]$internalSetting"
     displayName: "Determine whether to test ${{ parameters.updateScenarioName }}"
 
   - bash: |
@@ -176,5 +183,6 @@ steps:
     condition: and(succeeded(), ne(variables['abActiveVolume'], 'null'))
 
   - bash: |
-      echo "##vso[task.setvariable variable=abActiveVolume]$(existingAbUpdateVolume)"
+      echo "Reset abActiveVolume value to cached value: $(existingAbActiveVolume)"
+      echo "##vso[task.setvariable variable=abActiveVolume]$(existingAbActiveVolume)"
     displayName: "Reset abActiveVolume variable"
