@@ -10,7 +10,7 @@
 
 ### variant-1
 
-Raw contents of the script.
+Raw contents of the script. Valid script servicing types are CleanInstall and AbUpdate.
 
 | Characteristic | Value    |
 | -------------- | -------- |
@@ -27,7 +27,7 @@ Raw contents of the script.
 
 ### variant-2
 
-Path to a script in the execution OS.
+Path to a script in the execution OS. Valid script servicing types are CleanInstall and AbUpdate.
 
 | Characteristic | Value    |
 | -------------- | -------- |

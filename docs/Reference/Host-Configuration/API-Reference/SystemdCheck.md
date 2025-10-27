@@ -20,7 +20,7 @@ Name of the script.
 
 ### `runOn` **<span>(required)</span>**
 
-List of servicing types that the script should run on.
+List of servicing types that the script should run on. Valid servicing types are CleanInstall and AbUpdate.
 
 | Characteristic | Value   |
 | -------------- | ------- |

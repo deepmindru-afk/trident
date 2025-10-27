@@ -390,13 +390,13 @@ impl HooksSubsystem {
         }
 
         // Shared vector to collect script errors from threads
-        let script_errors = Arc::new(Mutex::new(Vec::new()));
+        let health_check_errors = Arc::new(Mutex::new(Vec::new()));
         // Create parallel health-check threads within a scope, the
         // threads will all be joined before the scope ends.
         thread::scope(|s| {
             for health_check in health_checks {
                 let subsystem = &self;
-                let loop_script_errors = script_errors.clone();
+                let loop_script_errors = health_check_errors.clone();
                 s.spawn(move || match health_check {
                     Check::SystemdCheck(systemd_check) => {
                         if let Err(err) = subsystem.run_systemd_check(&systemd_check) {
@@ -422,21 +422,21 @@ impl HooksSubsystem {
             }
         });
 
-        // Create error collection from individual script errors
-        let script_errors_message: String = script_errors
+        // Create error collection from individual health check failures
+        let health_check_errors_message: String = health_check_errors
             .lock()
             .unwrap()
             .iter()
             .map(|e| format!("{}: {:?}", e.script_name, e.error_message))
             .collect::<Vec<String>>()
             .join("\n");
-        if !script_errors.lock().unwrap().is_empty() {
+        if !health_check_errors.lock().unwrap().is_empty() {
             debug!(
-                "Update-check scripts completed with errors:\n{}",
-                script_errors_message
+                "Health checks completed with errors:\n{}",
+                health_check_errors_message
             );
             return Err(TridentError::new(ServicingError::HealthChecksFailed {
-                details: script_errors_message,
+                details: health_check_errors_message,
             }));
         }
         Ok(())

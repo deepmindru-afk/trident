@@ -13,10 +13,11 @@ use crate::status::ServicingType;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schemars", derive(JsonSchema))]
 pub struct Health {
-    /// Scripts to be run before Trident commits an updated target OS as 'provisioned'.  If any of
-    /// the scripts fail, commit will not be completed and rollback will be triggered.
+    /// Scripts to be run before Trident commits a serviced target OS as 'provisioned'.  If any of
+    /// the scripts fail, commit will not be completed and, for A/B update, a rollback will be
+    /// triggered.
     ///
-    /// These scripts only run for updates, not installs. If runOn is specified for anything other
+    /// These scripts run for installs and A/B updates. If runOn is specified for anything other
     /// than an update type, the script will be ignored.
     ///
     /// These scripts are run in the target OS. The `$TARGET_ROOT` variable
@@ -30,16 +31,25 @@ pub struct Health {
 #[cfg_attr(feature = "schemars", derive(JsonSchema))]
 pub enum Check {
     /// Raw contents of the script.
+    /// Valid script servicing types are CleanInstall and AbUpdate.
     Script(Script),
 
     /// Path to a script in the execution OS.
+    /// Valid script servicing types are CleanInstall and AbUpdate.
     SystemdCheck(SystemdCheck),
 }
 
 impl Check {
     /// Returns true if servicing type is enabled for this script.
     pub fn should_run(&self, servicing_type: ServicingType) -> bool {
-        servicing_type == ServicingType::AbUpdate
+        match servicing_type {
+            ServicingType::CleanInstall | ServicingType::AbUpdate => { /* valid */ }
+            _ => return false,
+        }
+        match self {
+            Check::Script(script) => script.should_run(servicing_type),
+            Check::SystemdCheck(systemd_check) => systemd_check.should_run(servicing_type),
+        }
     }
 }
 
@@ -99,8 +109,31 @@ pub struct SystemdCheck {
     pub timeout_seconds: usize,
 
     /// List of servicing types that the script should run on.
+    /// Valid servicing types are CleanInstall and AbUpdate.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub run_on: Vec<ServicingTypeSelection>,
+}
+
+impl SystemdCheck {
+    /// Returns true if servicing type is enabled for this script.
+    pub fn should_run(&self, servicing_type: ServicingType) -> bool {
+        if self.run_on.contains(&ServicingTypeSelection::All) {
+            return true;
+        }
+        match servicing_type {
+            ServicingType::CleanInstall => {
+                self.run_on.contains(&ServicingTypeSelection::CleanInstall)
+            }
+            ServicingType::NormalUpdate => {
+                self.run_on.contains(&ServicingTypeSelection::NormalUpdate)
+            }
+            ServicingType::AbUpdate => self.run_on.contains(&ServicingTypeSelection::AbUpdate),
+            ServicingType::UpdateAndReboot => self
+                .run_on
+                .contains(&ServicingTypeSelection::UpdateAndReboot),
+            _ => false,
+        }
+    }
 }
 
 /// Unit Test for should_run
@@ -110,12 +143,12 @@ mod tests {
 
     use crate::config::host::scripts::{ScriptSource, ServicingTypeSelection};
 
-    fn create_test_health_checks() -> Health {
+    fn create_test_health_checks(run_on_servicing_type: ServicingTypeSelection) -> Health {
         Health {
             checks: vec![
                 Check::Script(Script {
                     name: "test-script".into(),
-                    run_on: vec![ServicingTypeSelection::AbUpdate],
+                    run_on: vec![run_on_servicing_type.clone()],
                     interpreter: Some("/bin/bash".into()),
                     source: ScriptSource::Content("echo hi".into()),
                     ..Default::default()
@@ -124,7 +157,7 @@ mod tests {
                     name: "test-systemd-check".into(),
                     systemd_services: vec!["test-service".into()],
                     timeout_seconds: 60,
-                    run_on: vec![ServicingTypeSelection::AbUpdate],
+                    run_on: vec![run_on_servicing_type.clone()],
                 }),
             ],
         }
@@ -132,16 +165,39 @@ mod tests {
 
     #[test]
     fn test_health_checks_should_run() {
-        let health = create_test_health_checks();
-        health.checks.iter().for_each(|check| {
-            assert!(check.should_run(ServicingType::AbUpdate));
-            assert!(!check.should_run(ServicingType::CleanInstall));
-        });
+        create_test_health_checks(ServicingTypeSelection::AbUpdate)
+            .checks
+            .iter()
+            .for_each(|check| {
+                assert!(check.should_run(ServicingType::AbUpdate));
+                assert!(!check.should_run(ServicingType::CleanInstall));
+            });
+        create_test_health_checks(ServicingTypeSelection::CleanInstall)
+            .checks
+            .iter()
+            .for_each(|check| {
+                assert!(!check.should_run(ServicingType::AbUpdate));
+                assert!(check.should_run(ServicingType::CleanInstall));
+            });
+        create_test_health_checks(ServicingTypeSelection::All)
+            .checks
+            .iter()
+            .for_each(|check| {
+                assert!(check.should_run(ServicingType::AbUpdate));
+                assert!(check.should_run(ServicingType::CleanInstall));
+            });
+        create_test_health_checks(ServicingTypeSelection::NormalUpdate)
+            .checks
+            .iter()
+            .for_each(|check| {
+                assert!(!check.should_run(ServicingType::AbUpdate));
+                assert!(!check.should_run(ServicingType::CleanInstall));
+            });
     }
 
     #[test]
     fn test_health_checks_serde() {
-        let health = create_test_health_checks();
+        let health = create_test_health_checks(ServicingTypeSelection::AbUpdate);
         let serialized = serde_yaml::to_string(&health.checks).unwrap();
         println!("Serialized health check: {}", &serialized);
         assert!(
