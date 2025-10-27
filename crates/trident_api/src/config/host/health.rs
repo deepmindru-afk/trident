@@ -18,7 +18,7 @@ pub struct Health {
     /// triggered.
     ///
     /// These scripts run for installs and A/B updates. If runOn is specified for anything other
-    /// than an update type, the script will be ignored.
+    /// than 'clean-install' or 'ab-update' type, the script will be ignored.
     ///
     /// These scripts are run in the target OS. The `$TARGET_ROOT` variable
     /// will be set to '/' for consistency with postProvision scripts.
