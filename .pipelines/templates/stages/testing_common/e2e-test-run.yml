@@ -80,13 +80,18 @@ steps:
 
   - bash: |
       set -eux
+      EXPECTED_HOST_STATUS_STATE_ARG=""
+      if [ "${{ parameters.tridentConfigurationName }}" == "health-checks-install" ]; then
+        EXPECTED_HOST_STATUS_STATE_ARG="--expected-host-status-state not-provisioned"
+      fi
       python3 -u -m pytest \
           -m "${{ parameters.buildPurpose }}" \
           --capture=no \
           --junit-xml=${{ parameters.deploymentEnvironment }}_${{ parameters.runtimeEnv }}_${{ parameters.tridentConfigurationName }}_${{ parameters.jUnitXMLIdentifier }}_clean_install_$(System.JobAttempt).junit.xml \
           --host ${{ parameters.hostIp }} \
           --runtime-env ${{ parameters.runtimeEnv }} \
-          --configuration ${{ parameters.tridentConfigPath }}
+          --configuration ${{ parameters.tridentConfigPath }} \
+          $EXPECTED_HOST_STATUS_STATE_ARG
     timeoutInMinutes: 5
     workingDirectory: $(Build.SourcesDirectory)/tests/e2e_tests
     displayName: "🔬 Run Trident E2E tests after clean install of target OS"

@@ -11,12 +11,13 @@ def test_rollback(
     connection: fabric.Connection,
     tridentCommand: str,
     abActiveVolume: str,
+    expectedHostStatusState: str,
 ) -> None:
     print("Starting rollback test...")
     # Check Host Status
     host_status = get_host_status(connection, tridentCommand)
-    # Assert that the servicing state is provisioned
-    assert host_status["servicingState"] == "provisioned"
+    # Assert that the servicing state is as expected
+    assert host_status["servicingState"] == expectedHostStatusState
     # Assert that the last error reflects health.checks failure
     serializedLastError = yaml.dump(host_status["lastError"], default_flow_style=False)
     assert "Failed health-checks" in serializedLastError
