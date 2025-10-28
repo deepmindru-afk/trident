@@ -71,11 +71,18 @@ steps:
     displayName: "Installing dependencies for E2E tests"
 
   - bash: |
+      EXPECT_FAILURE_ARG=""
+      if [ "${{ variables['tridentConfigurationName'] }}" == "health-checks-install" ]; then
+        # In health-checks-install, the Trident service will not return
+        # success. This is expected.
+        EXPECT_FAILURE_ARG="--expect-failed-commit"
+      fi
       $(Build.SourcesDirectory)/bin/storm-trident helper check-ssh \
           "${{ parameters.sshKeyPath }}" \
           "${{ parameters.hostIp }}" \
           "${{ parameters.userName }}" \
-          "${{ parameters.runtimeEnv }}"
+          "${{ parameters.runtimeEnv }}" \
+          $EXPECT_FAILURE_ARG
     displayName: "🤝 Check SSH connection"
 
   - bash: |
