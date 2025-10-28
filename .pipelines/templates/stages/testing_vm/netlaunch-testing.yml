@@ -200,7 +200,7 @@ stages:
               fi
 
               HANDLE_PROVISIONED_STATE_ARG="--wait-for-provisioned-state"
-              if [ "${{ parameters.tridentConfigurationName }}" == "health-checks-install" ]; then
+              if [ "${{ variables['tridentConfigurationName'] }}" == "health-checks-install" ]; then
                 # In health-checks-install, the Host Status will never reach
                 # 'provisioned' state, because the health checks are designed to
                 # fail.
