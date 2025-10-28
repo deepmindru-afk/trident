@@ -73,7 +73,7 @@ steps:
   - bash: |
       set -eux
       EXPECT_FAILURE_ARG=""
-      if [ "${{ variables['tridentConfigurationName'] }}" == "health-checks-install" ]; then
+      if [ "${{ parameters.tridentConfigurationName }}" == "health-checks-install" ]; then
         # In health-checks-install, the Trident service will not return
         # success. This is expected.
         EXPECT_FAILURE_ARG="--expect-failed-commit"
