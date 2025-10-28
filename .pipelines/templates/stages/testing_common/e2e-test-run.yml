@@ -71,6 +71,7 @@ steps:
     displayName: "Installing dependencies for E2E tests"
 
   - bash: |
+      set -eux
       EXPECT_FAILURE_ARG=""
       if [ "${{ variables['tridentConfigurationName'] }}" == "health-checks-install" ]; then
         # In health-checks-install, the Trident service will not return
