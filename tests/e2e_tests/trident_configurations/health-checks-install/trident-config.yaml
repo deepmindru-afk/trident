@@ -56,5 +56,5 @@ health:
     - clean-install
     systemdServices:
     - non-existent-service1.service
-    - non-existent-servic21.service
+    - non-existent-service2.service
     timeoutSeconds: 15
