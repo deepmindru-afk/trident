@@ -94,6 +94,7 @@ fn run_trident(
             Commands::Install { status, error, .. }
             | Commands::Update { status, error, .. }
             | Commands::Commit { status, error }
+            | Commands::Rollback { status, error, .. }
             | Commands::Listen { status, error }
             | Commands::RebuildRaid { status, error, .. } => {
                 let config_path = match &args.command {
@@ -161,6 +162,11 @@ fn run_trident(
                     ),
                     Commands::Commit { .. } => {
                         trident.commit(&mut datastore).map(|()| ExitKind::Done)
+                    }
+                    Commands::Rollback { validate_only, .. } => {
+                        info!("Rollback command called (validate_only: {})", validate_only);
+                        info!("This is a placeholder implementation - manual rollback not yet implemented");
+                        Ok(ExitKind::Done)
                     }
                     Commands::Listen { .. } => {
                         trident.listen(&mut datastore).map(|()| ExitKind::Done)

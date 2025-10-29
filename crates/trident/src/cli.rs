@@ -94,6 +94,21 @@ pub enum Commands {
         error: Option<PathBuf>,
     },
 
+    /// (dummy command) Rollback to the previous A/B volume
+    Rollback {
+        /// CHeck if rollback is possible
+        #[clap(long)]
+        validate_only: bool,
+
+        /// Path to save the resulting Host Status (maybe it is not needed)
+        #[clap(short, long)]
+        status: Option<PathBuf>,
+
+        /// Path to save an eventual fatal error
+        #[clap(short, long)]
+        error: Option<PathBuf>,
+    },
+
     #[clap(hide(true))]
     Listen {
         /// Path to save the resulting Host Status
@@ -183,6 +198,7 @@ impl Commands {
             Commands::Install { .. } => "install",
             Commands::Update { .. } => "update",
             Commands::Commit { .. } => "commit",
+            Commands::Rollback { .. } => "rollback",
             Commands::Listen { .. } => "listen",
             Commands::RebuildRaid { .. } => "rebuild-raid",
             Commands::StartNetwork { .. } => "start-network",
